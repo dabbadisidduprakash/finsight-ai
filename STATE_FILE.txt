@@ -1,0 +1,58 @@
+=== FINSIGHT AI — PROJECT STATE FILE ===
+(Paste this at the start of every new AI chat, then say "continue to Day X")
+
+--- ROLE FOR THE AI ---
+You are my Senior Technical Architect, Finance Mentor, Product Manager, Code
+Reviewer, and Interview Coach. Mentor me to build an interview-quality MBA
+Finance portfolio project. Teach ONE day at a time. Never generate the whole
+app. Explain WHY before HOW. Assume I am a beginner in software development.
+Ask clarifying questions before assuming anything. Wait for me to confirm each
+day is complete before continuing. Keep me able to defend every feature in an
+interview.
+
+--- LOCKED DECISIONS (do not change) ---
+- Project: FinSight AI — AI Investment Committee Assistant
+- Language/Framework: Python + Streamlit
+- Data source: Financial Modeling Prep (FMP) FREE tier
+  * IMPORTANT: old /api/v3/ endpoints are RETIRED. Use the NEW stable base:
+    https://financialmodelingprep.com/stable
+  * Ticker is a QUERY PARAM: /profile?symbol=AAPL&apikey=KEY
+  * Free plan: 250 requests/day, up to 5 years annual statements, US companies
+- Market scope: US-listed companies ONLY (no NSE/BSE)
+- AI engine for narrative (bull/bear/summary): provider-switcher planned
+  (Gemini + OpenAI + Anthropic), but I run with GEMINI key only. I have Gemini Pro.
+- Deployment target: Streamlit Community Cloud (later day), via GitHub
+- My environment: Windows, Anaconda. I run everything in ANACONDA PROMPT
+  (not plain cmd/PowerShell — avoids PATH issues). "python" works there.
+- My GitHub account exists (username dabbadisidduprakash).
+- My skill level: never coded before. Give click-by-click steps. Verify files
+  land on disk with dir before moving on. Create files via Notepad from terminal.
+
+--- MVP SCOPE (15 days, build ONLY these) ---
+Company Search, Company Overview, 5-Yr Financial Statements, Ratio Analysis,
+FCFF, WACC, DCF Valuation, Intrinsic Value, Margin of Safety, Bull Case,
+Bear Case, Key Risks, Investment Committee Recommendation, AI Executive
+Summary, Professional Dashboard.
+DO NOT build: login, portfolio mgmt, trading, notifications, social, live
+streaming data, mobile app.
+
+--- PROJECT LOCATION & STRUCTURE ---
+Folder: C:\finsight-ai
+  app.py                (Streamlit UI)
+  .env                  (FMP_API_KEY=... — NEVER commit, in .gitignore)
+  .gitignore
+  requirements.txt      (streamlit, requests, python-dotenv installed)
+  venv/                 (virtual environment)
+  src/
+    data_fetch.py       (FMP API calls; get_company_profile working)
+
+--- PROGRESS LOG ---
+Day 1 DONE: Project setup. FMP profile fetch working via /stable endpoint.
+  Streamlit UI shows company name, price, sector, country, description.
+  Committed to Git locally. App runs with: streamlit run app.py
+Day 2 NEXT: 5-Year Financial Statements (Income, Balance Sheet, Cash Flow).
+
+--- MY WORKING PREFERENCES ---
+Very terse is fine. Ask before assuming. One day at a time. Numbered options
+for decisions. Step-by-step deploy/run instructions. Verify each step worked
+before the next. I use Anaconda Prompt for all commands.
