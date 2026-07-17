@@ -1,6 +1,6 @@
 """
 app.py - Streamlit UI for FinSight AI.
-Day 2: company profile + 5-year financial statements in tabs.
+Day 4: added FCFF valuation tab.
 """
 import streamlit as st
 import pandas as pd
@@ -10,6 +10,8 @@ from src.data_fetch import (
     get_balance_sheet,
     get_cash_flow,
 )
+from src.ratios import calculate_ratios
+from src.valuation import calculate_fcff
 
 st.set_page_config(page_title="FinSight AI", page_icon="📊", layout="wide")
 
@@ -62,8 +64,9 @@ if "profile" in st.session_state:
 
     st.divider()
 
-    tab1, tab2, tab3 = st.tabs(
-        ["📈 Income Statement", "⚖️ Balance Sheet", "💵 Cash Flow"]
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        ["📈 Income Statement", "⚖️ Balance Sheet", "💵 Cash Flow",
+         "📊 Ratios", "🧮 Valuation"]
     )
 
     def show_statement(data, key_columns):
@@ -128,3 +131,76 @@ if "profile" in st.session_state:
                 "netCashProvidedByOperatingActivities": "Net Operating Cash",
             },
         )
+
+    with tab4:
+        st.markdown("**Financial Ratios** (last 5 years)")
+        ratios = calculate_ratios(
+            st.session_state.get("income"),
+            st.session_state.get("balance"),
+            st.session_state.get("cashflow"),
+            profile,
+        )
+        if not ratios:
+            st.warning("Could not calculate ratios (missing data).")
+        else:
+            pct_rows = ["Gross Margin", "Net Margin", "ROE", "ROA"]
+
+            def fmt(val, row_name):
+                if val is None:
+                    return "—"
+                if row_name in pct_rows:
+                    return f"{val*100:.1f}%"
+                return f"{val:.2f}"
+
+            years = [row["Year"] for row in ratios]
+            ratio_names = [k for k in ratios[0].keys() if k != "Year"]
+
+            text_table = {}
+            for name in ratio_names:
+                text_table[name] = [fmt(row.get(name), name) for row in ratios]
+
+            display_df = pd.DataFrame(text_table, index=years).T
+            st.dataframe(display_df, use_container_width=True)
+
+            st.caption(
+                "Current Ratio >1 = can cover short-term bills. "
+                "Higher margins/ROE = more profitable. "
+                "Debt-to-Equity: higher = more leverage/risk. "
+                "P/E shown for latest year only."
+            )
+
+    with tab5:
+        st.markdown("**FCFF — Free Cash Flow to the Firm** (last 5 years, USD)")
+        st.caption(
+            "FCFF = Operating Cash Flow + Interest×(1−Tax) − CapEx. "
+            "This is the cash the whole business generates for all investors "
+            "(debt + equity). It's the foundation of the DCF valuation."
+        )
+        fcff_rows = calculate_fcff(
+            st.session_state.get("income"),
+            st.session_state.get("cashflow"),
+        )
+        if not fcff_rows:
+            st.warning("Could not calculate FCFF (missing data).")
+        else:
+            display_rows = ["Operating Cash Flow", "Interest (after-tax)",
+                            "CapEx", "FCFF"]
+            years = [r["Year"] for r in fcff_rows]
+
+            table = {}
+            for name in display_rows:
+                table[name] = [
+                    f"{r[name]:,.0f}" if r.get(name) is not None else "—"
+                    for r in fcff_rows
+                ]
+
+            fdf = pd.DataFrame(table, index=years).T
+            st.dataframe(fdf, use_container_width=True)
+
+            # Show the latest FCFF as a headline metric
+            latest = fcff_rows[0]
+            if latest.get("FCFF") is not None:
+                st.metric(
+                    f"Latest FCFF ({latest['Year']})",
+                    f"${latest['FCFF']:,.0f}",
+                )
