@@ -125,6 +125,52 @@ def _split_sections(text):
     bear = bear.replace("BEAR CASE:", "").replace("Bear Case:", "").strip()
     return bull, bear
 
+def get_investment_memo(profile, ratios, dcf, recommendation):
+    """
+    Ask Gemini to write a concise Investment Committee memo that NARRATES
+    the rule-based recommendation. The recommendation and all numbers are
+    decided by our code; the AI only writes the prose around them.
+    Returns {"memo": "...", "error": None}.
+    """
+    if not GEMINI_API_KEY:
+        return {"memo": None, "error": "GEMINI_API_KEY not found."}
+
+    context = _build_context(profile, ratios, dcf)
+    rec = recommendation
+
+    prompt = f"""You are writing a brief Investment Committee memo. A rule-based
+scoring model has ALREADY produced the recommendation below. Do NOT change the
+recommendation or invent numbers. Write a professional memo that explains and
+justifies it using the provided metrics.
+
+VERIFIED METRICS:
+{context}
+
+MODEL RECOMMENDATION: {rec['recommendation']}
+CONFIDENCE: {rec['confidence_label']} ({rec['confidence']*100:.0f}%)
+Key strengths identified: {', '.join(rec['strengths']) if rec['strengths'] else 'none noted'}
+Key weaknesses identified: {', '.join(rec['weaknesses']) if rec['weaknesses'] else 'none noted'}
+
+Write a memo of 3 short paragraphs:
+1. The recommendation and the core reason for it.
+2. The main supporting factors and the main risks/concerns.
+3. A closing note on confidence and what would change the view.
+
+Keep it professional, balanced, and under 200 words. End with a one-line
+disclaimer that this is not investment advice.
+"""
+
+    try:
+        from google import genai
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+        )
+        memo = response.text if hasattr(response, "text") else str(response)
+        return {"memo": memo.strip(), "error": None}
+    except Exception as e:
+        return {"memo": None, "error": f"AI memo failed: {e}"}
 
 if __name__ == "__main__":
     # Standalone test with real data
