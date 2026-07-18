@@ -1,6 +1,6 @@
 """
 app.py - Streamlit UI for FinSight AI.
-Day 6: FCFF + WACC + DCF intrinsic value in the Valuation tab.
+Day 8: FCFF + WACC + DCF + Margin of Safety + Sensitivity Analysis.
 """
 import streamlit as st
 import pandas as pd
@@ -11,7 +11,13 @@ from src.data_fetch import (
     get_cash_flow,
 )
 from src.ratios import calculate_ratios
-from src.valuation import calculate_fcff, calculate_wacc, run_dcf, calculate_margin_of_safety
+from src.valuation import (
+    calculate_fcff,
+    calculate_wacc,
+    run_dcf,
+    calculate_margin_of_safety,
+    sensitivity_analysis,
+)
 
 st.set_page_config(page_title="FinSight AI", page_icon="📊", layout="wide")
 
@@ -272,7 +278,7 @@ if "profile" in st.session_state:
                     f"{upside*100:+.1f}%" if upside is not None else "N/A",
                 )
 
-# --- Margin of Safety ---
+                # --- Margin of Safety ---
                 mos = calculate_margin_of_safety(intrinsic, price)
                 st.markdown("**🛡️ Margin of Safety**")
                 required_mos = st.slider(
@@ -281,8 +287,8 @@ if "profile" in st.session_state:
                 ) / 100
 
                 if mos is not None:
-                    ms1, ms2 = st.columns(2)
                     mos_display = f"{mos*100:+.1f}%" if mos > -1 else "None (overvalued)"
+                    ms1, ms2 = st.columns(2)
                     ms1.metric("Actual Margin of Safety", mos_display)
                     ms2.metric("Required (your setting)", f"{required_mos*100:.0f}%")
 
@@ -290,39 +296,38 @@ if "profile" in st.session_state:
                         st.success(
                             f"✅ **Meets your margin of safety.** The stock trades "
                             f"{mos*100:.0f}% below intrinsic value, which clears your "
-                            f"{required_mos*100:.0f}% required buffer. There's room to "
-                            f"be wrong and still be protected."
+                            f"{required_mos*100:.0f}% required buffer."
                         )
                     elif mos > 0:
                         st.warning(
                             f"⚠️ **Below your required buffer.** There's a "
                             f"{mos*100:.0f}% discount, but you asked for at least "
-                            f"{required_mos*100:.0f}%. Thinner cushion than you want."
+                            f"{required_mos*100:.0f}%."
                         )
                     else:
                         st.error(
-                            f"❌ **No margin of safety.** The stock trades ABOVE "
-                            f"intrinsic value ({mos*100:.0f}%), so there's no cushion "
-                            f"if your assumptions prove optimistic."
+                            "❌ **No margin of safety.** The stock trades above "
+                            "intrinsic value, so there's no cushion if your "
+                            "assumptions prove optimistic."
                         )
                     st.caption(
-                        "Margin of Safety = (Intrinsic − Price) / Intrinsic. It's the "
-                        "discount to fair value that protects you if your DCF is wrong."
+                        "Margin of Safety = (Intrinsic − Price) / Intrinsic. The "
+                        "discount to fair value that protects you if the DCF is wrong."
                     )
 
-                # Verdict
+                # Verdict on valuation
                 if upside is not None:
                     if upside > 0.15:
                         st.success(
-                            f"📈 **Potentially UNDERVALUED** — the DCF suggests "
-                            f"the stock is worth about {upside*100:.0f}% more "
-                            f"than its current price (at these assumptions)."
+                            f"📈 **Potentially UNDERVALUED** — worth about "
+                            f"{upside*100:.0f}% more than its current price "
+                            f"(at these assumptions)."
                         )
                     elif upside < -0.15:
                         st.error(
-                            f"📉 **Potentially OVERVALUED** — the DCF suggests "
-                            f"the stock is worth about {abs(upside)*100:.0f}% "
-                            f"less than its current price (at these assumptions)."
+                            f"📉 **Potentially OVERVALUED** — worth about "
+                            f"{abs(upside)*100:.0f}% less than its current price "
+                            f"(at these assumptions)."
                         )
                     else:
                         st.info(
@@ -346,13 +351,55 @@ if "profile" in st.session_state:
                     use_container_width=True,
                 )
 
-                # % of value from terminal (a real interview point)
                 if dcf["enterprise_value"]:
                     tv_pct = dcf["pv_terminal"] / dcf["enterprise_value"] * 100
                     st.caption(
-                        f"⚠️ {tv_pct:.0f}% of the enterprise value comes from the "
+                        f"⚠️ {tv_pct:.0f}% of enterprise value comes from the "
                         f"terminal value — typical for DCF, but it means the result "
                         f"leans heavily on the terminal growth assumption."
                     )
 
                 st.session_state["dcf"] = dcf
+
+                # --- Sensitivity Analysis ---
+                st.divider()
+                st.markdown("### 🔬 Sensitivity Analysis")
+                st.caption(
+                    "Intrinsic value per share across a range of growth rates "
+                    "(columns) and WACC values (rows). A DCF isn't one number — "
+                    "it's a range driven by these two assumptions."
+                )
+
+                sens = sensitivity_analysis(
+                    st.session_state.get("income"),
+                    st.session_state.get("cashflow"),
+                    st.session_state.get("balance"),
+                    profile,
+                    current_wacc,
+                    terminal_growth=term_growth,
+                )
+
+                if not sens:
+                    st.warning("Could not build sensitivity table.")
+                else:
+                    wacc_list, growth_list, grid = sens
+                    col_labels = [f"g={g*100:.0f}%" for g in growth_list]
+                    row_labels = [f"WACC={w*100:.1f}%" for w in wacc_list]
+
+                    cell_text = []
+                    for row in grid:
+                        cell_text.append([
+                            f"${v:,.0f}" if v is not None else "—" for v in row
+                        ])
+
+                    sens_df = pd.DataFrame(
+                        cell_text, index=row_labels, columns=col_labels
+                    )
+                    st.dataframe(sens_df, use_container_width=True)
+
+                    st.caption(
+                        f"Current price: ${price:,.2f}. Cells above this = "
+                        f"undervalued at that assumption set; below = overvalued. "
+                        f"Value rises with growth and falls with WACC — the "
+                        f"uncertainty in any DCF."
+                    )

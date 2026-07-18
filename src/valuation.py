@@ -258,6 +258,94 @@ def calculate_margin_of_safety(intrinsic_value, market_price):
         return None
     return (intrinsic_value - market_price) / intrinsic_value
 
+def sensitivity_analysis(income, cashflow, balance, profile, base_wacc,
+                         terminal_growth=0.025):
+    """
+    Build a grid of intrinsic value per share across a range of
+    growth rates (columns) and WACC values (rows).
+    Returns (wacc_list, growth_list, grid) where grid[i][j] is the
+    intrinsic value at wacc_list[i] and growth_list[j], or None.
+    """
+    if base_wacc is None:
+        return None
+
+    # Growth rates across the top: base 8% +/- a spread
+    growth_list = [0.04, 0.06, 0.08, 0.10, 0.12]
+
+    # WACC values down the side: centered on the real WACC, +/- ~2%
+    wacc_center = round(base_wacc, 3)
+    wacc_list = [
+        round(wacc_center - 0.02, 3),
+        round(wacc_center - 0.01, 3),
+        wacc_center,
+        round(wacc_center + 0.01, 3),
+        round(wacc_center + 0.02, 3),
+    ]
+
+    grid = []
+    for w in wacc_list:
+        row = []
+        for g in growth_list:
+            # WACC must stay above terminal growth or the math breaks
+            if w <= terminal_growth:
+                row.append(None)
+                continue
+            dcf = run_dcf(
+                income, cashflow, balance, profile, w,
+                growth_rate=g, terminal_growth=terminal_growth,
+            )
+            if dcf and dcf.get("intrinsic_per_share") is not None:
+                row.append(dcf["intrinsic_per_share"])
+            else:
+                row.append(None)
+        grid.append(row)
+
+    return wacc_list, growth_list, grid
+
+def sensitivity_analysis(income, cashflow, balance, profile, base_wacc,
+                         terminal_growth=0.025):
+    """
+    Build a grid of intrinsic value per share across a range of
+    growth rates (columns) and WACC values (rows).
+    Returns (wacc_list, growth_list, grid) where grid[i][j] is the
+    intrinsic value at wacc_list[i] and growth_list[j], or None.
+    """
+    if base_wacc is None:
+        return None
+
+    # Growth rates across the top: base 8% +/- a spread
+    growth_list = [0.04, 0.06, 0.08, 0.10, 0.12]
+
+    # WACC values down the side: centered on the real WACC, +/- ~2%
+    wacc_center = round(base_wacc, 3)
+    wacc_list = [
+        round(wacc_center - 0.02, 3),
+        round(wacc_center - 0.01, 3),
+        wacc_center,
+        round(wacc_center + 0.01, 3),
+        round(wacc_center + 0.02, 3),
+    ]
+
+    grid = []
+    for w in wacc_list:
+        row = []
+        for g in growth_list:
+            # WACC must stay above terminal growth or the math breaks
+            if w <= terminal_growth:
+                row.append(None)
+                continue
+            dcf = run_dcf(
+                income, cashflow, balance, profile, w,
+                growth_rate=g, terminal_growth=terminal_growth,
+            )
+            if dcf and dcf.get("intrinsic_per_share") is not None:
+                row.append(dcf["intrinsic_per_share"])
+            else:
+                row.append(None)
+        grid.append(row)
+
+    return wacc_list, growth_list, grid
+
 if __name__ == "__main__":
     from data_fetch import get_income_statement, get_cash_flow
 
