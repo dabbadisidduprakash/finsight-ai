@@ -1,6 +1,6 @@
 """
 app.py - Streamlit UI for FinSight AI.
-Day 8: FCFF + WACC + DCF + Margin of Safety + Sensitivity Analysis.
+Day 9: added AI Analysis tab (Bull/Bear via Gemini).
 """
 import streamlit as st
 import pandas as pd
@@ -18,6 +18,7 @@ from src.valuation import (
     calculate_margin_of_safety,
     sensitivity_analysis,
 )
+from src.ai_analysis import get_ai_analysis
 
 st.set_page_config(page_title="FinSight AI", page_icon="📊", layout="wide")
 
@@ -50,6 +51,8 @@ if st.button("Analyze Company"):
             st.session_state["income"] = income
             st.session_state["balance"] = balance
             st.session_state["cashflow"] = cashflow
+            # Clear any prior AI result when a new company is loaded
+            st.session_state.pop("ai_result", None)
 
 if "profile" in st.session_state:
     profile = st.session_state["profile"]
@@ -70,9 +73,9 @@ if "profile" in st.session_state:
 
     st.divider()
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         ["📈 Income Statement", "⚖️ Balance Sheet", "💵 Cash Flow",
-         "📊 Ratios", "🧮 Valuation"]
+         "📊 Ratios", "🧮 Valuation", "🤖 AI Analysis"]
     )
 
     def show_statement(data, key_columns):
@@ -233,8 +236,7 @@ if "profile" in st.session_state:
         st.markdown("### 🎯 DCF Intrinsic Value")
         st.caption(
             "Project FCFF forward, add a terminal value, discount everything "
-            "back by WACC, then convert to value per share. Adjust the growth "
-            "assumptions below — the result is highly sensitive to them."
+            "back by WACC, then convert to value per share."
         )
 
         col_g, col_t = st.columns(2)
@@ -262,8 +264,7 @@ if "profile" in st.session_state:
 
             if not dcf or dcf.get("intrinsic_per_share") is None:
                 st.warning(
-                    "Could not complete DCF. This can happen if WACC is below "
-                    "the terminal growth rate — try lowering terminal growth."
+                    "Could not complete DCF. Try lowering terminal growth."
                 )
             else:
                 intrinsic = dcf["intrinsic_per_share"]
@@ -294,46 +295,27 @@ if "profile" in st.session_state:
 
                     if mos >= required_mos:
                         st.success(
-                            f"✅ **Meets your margin of safety.** The stock trades "
-                            f"{mos*100:.0f}% below intrinsic value, which clears your "
-                            f"{required_mos*100:.0f}% required buffer."
+                            f"✅ **Meets your margin of safety.** Trades "
+                            f"{mos*100:.0f}% below intrinsic value."
                         )
                     elif mos > 0:
                         st.warning(
-                            f"⚠️ **Below your required buffer.** There's a "
-                            f"{mos*100:.0f}% discount, but you asked for at least "
-                            f"{required_mos*100:.0f}%."
+                            f"⚠️ **Below your required buffer** ({mos*100:.0f}% "
+                            f"vs {required_mos*100:.0f}% required)."
                         )
                     else:
                         st.error(
-                            "❌ **No margin of safety.** The stock trades above "
-                            "intrinsic value, so there's no cushion if your "
-                            "assumptions prove optimistic."
+                            "❌ **No margin of safety** — trades above intrinsic value."
                         )
-                    st.caption(
-                        "Margin of Safety = (Intrinsic − Price) / Intrinsic. The "
-                        "discount to fair value that protects you if the DCF is wrong."
-                    )
 
-                # Verdict on valuation
+                # Verdict
                 if upside is not None:
                     if upside > 0.15:
-                        st.success(
-                            f"📈 **Potentially UNDERVALUED** — worth about "
-                            f"{upside*100:.0f}% more than its current price "
-                            f"(at these assumptions)."
-                        )
+                        st.success(f"📈 **Potentially UNDERVALUED** — ~{upside*100:.0f}% above price.")
                     elif upside < -0.15:
-                        st.error(
-                            f"📉 **Potentially OVERVALUED** — worth about "
-                            f"{abs(upside)*100:.0f}% less than its current price "
-                            f"(at these assumptions)."
-                        )
+                        st.error(f"📉 **Potentially OVERVALUED** — ~{abs(upside)*100:.0f}% below price.")
                     else:
-                        st.info(
-                            "➖ **Roughly FAIRLY VALUED** — intrinsic value is "
-                            "close to the market price at these assumptions."
-                        )
+                        st.info("➖ **Roughly FAIRLY VALUED.**")
 
                 # Breakdown
                 st.markdown("**Valuation Breakdown**")
@@ -354,9 +336,7 @@ if "profile" in st.session_state:
                 if dcf["enterprise_value"]:
                     tv_pct = dcf["pv_terminal"] / dcf["enterprise_value"] * 100
                     st.caption(
-                        f"⚠️ {tv_pct:.0f}% of enterprise value comes from the "
-                        f"terminal value — typical for DCF, but it means the result "
-                        f"leans heavily on the terminal growth assumption."
+                        f"⚠️ {tv_pct:.0f}% of enterprise value comes from terminal value."
                     )
 
                 st.session_state["dcf"] = dcf
@@ -365,9 +345,8 @@ if "profile" in st.session_state:
                 st.divider()
                 st.markdown("### 🔬 Sensitivity Analysis")
                 st.caption(
-                    "Intrinsic value per share across a range of growth rates "
-                    "(columns) and WACC values (rows). A DCF isn't one number — "
-                    "it's a range driven by these two assumptions."
+                    "Intrinsic value per share across growth rates (columns) "
+                    "and WACC values (rows)."
                 )
 
                 sens = sensitivity_analysis(
@@ -379,27 +358,64 @@ if "profile" in st.session_state:
                     terminal_growth=term_growth,
                 )
 
-                if not sens:
-                    st.warning("Could not build sensitivity table.")
-                else:
+                if sens:
                     wacc_list, growth_list, grid = sens
                     col_labels = [f"g={g*100:.0f}%" for g in growth_list]
                     row_labels = [f"WACC={w*100:.1f}%" for w in wacc_list]
-
                     cell_text = []
                     for row in grid:
                         cell_text.append([
                             f"${v:,.0f}" if v is not None else "—" for v in row
                         ])
-
-                    sens_df = pd.DataFrame(
-                        cell_text, index=row_labels, columns=col_labels
-                    )
+                    sens_df = pd.DataFrame(cell_text, index=row_labels, columns=col_labels)
                     st.dataframe(sens_df, use_container_width=True)
-
                     st.caption(
-                        f"Current price: ${price:,.2f}. Cells above this = "
-                        f"undervalued at that assumption set; below = overvalued. "
-                        f"Value rises with growth and falls with WACC — the "
-                        f"uncertainty in any DCF."
+                        f"Current price: ${price:,.2f}. Value rises with growth, "
+                        f"falls with WACC."
+                    )
+
+    with tab6:
+        st.markdown("### 🤖 AI Investment Analysis")
+        st.caption(
+            "AI-generated narrative (Gemini). The AI reasons ONLY from the "
+            "metrics this app calculated — it does not invent numbers. "
+            "This text is AI commentary, not financial advice."
+        )
+
+        # Need ratios + dcf computed. Ratios recompute cheaply; dcf is in session.
+        ratios_for_ai = calculate_ratios(
+            st.session_state.get("income"),
+            st.session_state.get("balance"),
+            st.session_state.get("cashflow"),
+            profile,
+        )
+        dcf_for_ai = st.session_state.get("dcf")
+
+        if dcf_for_ai is None:
+            st.info(
+                "👉 Open the **🧮 Valuation** tab first so the DCF is calculated, "
+                "then come back here to generate the AI analysis."
+            )
+        else:
+            if st.button("🤖 Generate AI Bull & Bear Case"):
+                with st.spinner("Gemini is analyzing the numbers..."):
+                    result = get_ai_analysis(profile, ratios_for_ai, dcf_for_ai)
+                st.session_state["ai_result"] = result
+
+            result = st.session_state.get("ai_result")
+            if result:
+                if result.get("error"):
+                    st.error(f"AI analysis failed: {result['error']}")
+                else:
+                    st.success("✅ AI analysis generated (based on calculated metrics)")
+                    c_bull, c_bear = st.columns(2)
+                    with c_bull:
+                        st.markdown("#### 📈 Bull Case")
+                        st.markdown(result.get("bull") or "_No bull case returned._")
+                    with c_bear:
+                        st.markdown("#### 📉 Bear Case")
+                        st.markdown(result.get("bear") or "_No bear case returned._")
+                    st.caption(
+                        "⚠️ AI-generated narrative for educational purposes. "
+                        "Not investment advice. Verify independently."
                     )
