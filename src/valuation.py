@@ -245,6 +245,19 @@ def run_dcf(income, cashflow, balance, profile, wacc,
         },
     }
 
+def calculate_margin_of_safety(intrinsic_value, market_price):
+    """
+    Margin of Safety = (Intrinsic - Price) / Intrinsic
+    Returns the buffer as a decimal (0.30 = 30% cushion), or None.
+    Positive = trading below intrinsic value (has a safety buffer).
+    Negative = trading above intrinsic value (no buffer, overpriced).
+    """
+    if intrinsic_value is None or market_price is None:
+        return None
+    if intrinsic_value == 0:
+        return None
+    return (intrinsic_value - market_price) / intrinsic_value
+
 if __name__ == "__main__":
     from data_fetch import get_income_statement, get_cash_flow
 
