@@ -56,3 +56,4 @@ Day 2 NEXT: 5-Year Financial Statements (Income, Balance Sheet, Cash Flow).
 Very terse is fine. Ask before assuming. One day at a time. Numbered options
 for decisions. Step-by-step deploy/run instructions. Verify each step worked
 before the next. I use Anaconda Prompt for all commands.
+LIVE APP URL: https://finsight-ai-fs39fm8xahhemc3a5uydgp.streamlit.app/

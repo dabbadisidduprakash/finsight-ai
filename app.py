@@ -1,6 +1,6 @@
 """
 app.py - Streamlit UI for FinSight AI.
-Day 13: polished header, footer, styling, and corrected recommendation labels.
+Day 14: encoding-safe, plain ASCII throughout.
 """
 import streamlit as st
 import pandas as pd
@@ -27,22 +27,14 @@ from src.recommendation import get_recommendation
 
 st.set_page_config(
     page_title="FinSight AI",
-    page_icon="📊",
+    page_icon="chart_with_upwards_trend",
     layout="wide",
-    initial_sidebar_state="collapsed",
 )
 
-# --- Header ---
-st.markdown(
-    "<h1 style='margin-bottom:0'>📊 FinSight AI</h1>"
-    "<p style='color:gray; margin-top:0; font-size:1.05rem'>"
-    "AI Investment Committee Assistant &nbsp;·&nbsp; DCF Valuation · Ratio Analysis · "
-    "Grounded AI Insight</p>",
-    unsafe_allow_html=True,
-)
+st.title("FinSight AI")
+st.caption("AI Investment Committee Assistant - DCF Valuation, Ratio Analysis, Grounded AI Insight")
 st.divider()
 
-# --- Search ---
 c_input, c_btn = st.columns([4, 1])
 with c_input:
     ticker = st.text_input(
@@ -52,13 +44,13 @@ with c_input:
         placeholder="Enter a US stock ticker (e.g. AAPL, MSFT, GOOGL)",
     ).strip().upper()
 with c_btn:
-    analyze = st.button("🔍 Analyze", use_container_width=True)
+    analyze = st.button("Analyze", use_container_width=True)
 
 if analyze:
     if not ticker:
         st.warning("Please enter a ticker symbol.")
     else:
-        with st.spinner(f"Fetching data for {ticker}..."):
+        with st.spinner("Fetching data for " + ticker + "..."):
             profile = get_company_profile(ticker)
             income = get_income_statement(ticker)
             balance = get_balance_sheet(ticker)
@@ -66,7 +58,7 @@ if analyze:
 
         if profile is None:
             st.error(
-                f"Could not find data for '{ticker}'. "
+                "Could not find data for '" + ticker + "'. "
                 "Check the ticker (US-listed only), or the API key may have "
                 "hit its daily limit."
             )
@@ -93,20 +85,19 @@ if "profile" in st.session_state:
     with col_info:
         st.subheader(profile.get("companyName", "Unknown"))
         mcap = profile.get("marketCap")
-        mcap_str = f"${mcap:,.0f}" if isinstance(mcap, (int, float)) else "N/A"
+        mcap_str = "$" + format(mcap, ",.0f") if isinstance(mcap, (int, float)) else "N/A"
         price_val = profile.get("price")
-        price_txt = f"${price_val:,.2f}" if isinstance(price_val, (int, float)) else "N/A"
+        price_txt = "$" + format(price_val, ",.2f") if isinstance(price_val, (int, float)) else "N/A"
         st.markdown(
-            f"**Sector:** {profile.get('sector', 'N/A')} &nbsp;|&nbsp; "
-            f"**Price:** {price_txt} &nbsp;|&nbsp; "
-            f"**Market Cap:** {mcap_str}"
+            "**Sector:** " + str(profile.get("sector", "N/A")) + "  \n"
+            + "**Price:** " + price_txt.replace("$", "\\$")
+            + " &nbsp;&nbsp; **Market Cap:** " + mcap_str.replace("$", "\\$")
         )
 
     st.divider()
 
     ratios = calculate_ratios(income, balance, cashflow, profile)
 
-    # Default DCF up front so the dashboard always has a valuation
     if "dcf" not in st.session_state:
         default_wacc_data = calculate_wacc(profile, income, balance)
         if default_wacc_data:
@@ -119,9 +110,9 @@ if "profile" in st.session_state:
                 st.session_state["dcf"] = default_dcf
 
     tabs = st.tabs(
-        ["🏠 Dashboard", "📈 Income Statement", "⚖️ Balance Sheet",
-         "💵 Cash Flow", "📊 Ratios", "🧮 Valuation", "🤖 AI Analysis",
-         "🏛️ Recommendation"]
+        ["Dashboard", "Income Statement", "Balance Sheet",
+         "Cash Flow", "Ratios", "Valuation", "AI Analysis",
+         "Recommendation"]
     )
     (tab_dash, tab1, tab2, tab3, tab4, tab5, tab6, tab7) = tabs
 
@@ -142,7 +133,7 @@ if "profile" in st.session_state:
                 table[friendly_name] = df[raw_key].tolist()
         display_df = pd.DataFrame(table, index=years).T
         st.dataframe(
-            display_df.style.format("{:,.0f}", na_rep="—"),
+            display_df.style.format("{:,.0f}", na_rep="-"),
             use_container_width=True,
         )
 
@@ -160,37 +151,35 @@ if "profile" in st.session_state:
         df = pd.DataFrame(rows).iloc[::-1].reset_index(drop=True)
         return df.set_index("Year")
 
-    # ================= DASHBOARD =================
     with tab_dash:
-        st.markdown("## 🏠 Company Dashboard")
+        st.markdown("## Company Dashboard")
 
         d1, d2, d3, d4 = st.columns(4)
         price = profile.get("price")
-        d1.metric("Price", f"${price:,.2f}" if isinstance(price, (int, float)) else "N/A")
+        d1.metric("Price", "$" + format(price, ",.2f") if isinstance(price, (int, float)) else "N/A")
         pe = ratios[0].get("P/E") if ratios else None
-        d2.metric("P/E", f"{pe:.1f}" if isinstance(pe, (int, float)) else "N/A")
+        d2.metric("P/E", format(pe, ".1f") if isinstance(pe, (int, float)) else "N/A")
         nm = ratios[0].get("Net Margin") if ratios else None
-        d3.metric("Net Margin", f"{nm*100:.1f}%" if isinstance(nm, (int, float)) else "N/A")
+        d3.metric("Net Margin", format(nm*100, ".1f") + "%" if isinstance(nm, (int, float)) else "N/A")
         roe = ratios[0].get("ROE") if ratios else None
-        d4.metric("ROE", f"{roe*100:.0f}%" if isinstance(roe, (int, float)) else "N/A")
+        d4.metric("ROE", format(roe*100, ".0f") + "%" if isinstance(roe, (int, float)) else "N/A")
 
         st.divider()
 
         dcf = st.session_state.get("dcf")
         if dcf and dcf.get("intrinsic_per_share") is not None:
             v1, v2, v3 = st.columns(3)
-            v1.metric("Intrinsic Value", f"${dcf['intrinsic_per_share']:,.2f}")
-            v2.metric("Market Price", f"${dcf['market_price']:,.2f}")
+            v1.metric("Intrinsic Value", "$" + format(dcf["intrinsic_per_share"], ",.2f"))
+            v2.metric("Market Price", "$" + format(dcf["market_price"], ",.2f"))
             up = dcf.get("upside")
             v3.metric("Upside/(Downside)",
-                      f"{up*100:+.1f}%" if up is not None else "N/A")
+                      format(up*100, "+.1f") + "%" if up is not None else "N/A")
 
             mos = calculate_margin_of_safety(
                 dcf["intrinsic_per_share"], dcf["market_price"]
             )
             rec = get_recommendation(up, mos, ratios)
-            banner = f"**Recommendation: {rec['recommendation']}** " \
-                     f"(Confidence: {rec['confidence_label']})"
+            banner = "**Recommendation: " + rec["recommendation"] + "** (Confidence: " + rec["confidence_label"] + ")"
             if rec["color"] == "success":
                 st.success(banner)
             elif rec["color"] == "warning":
@@ -200,7 +189,7 @@ if "profile" in st.session_state:
             else:
                 st.info(banner)
 
-            if st.button("🤖 Generate Executive Summary"):
+            if st.button("Generate Executive Summary"):
                 with st.spinner("Gemini is summarizing..."):
                     es = get_executive_summary(profile, ratios, dcf, rec)
                 st.session_state["exec_summary"] = es
@@ -209,13 +198,13 @@ if "profile" in st.session_state:
                 if es.get("error"):
                     st.error(es["error"])
                 else:
-                    st.markdown("**📋 Executive Summary**")
+                    st.markdown("**Executive Summary**")
                     st.info(es["summary"])
         else:
-            st.info("Valuation unavailable — try re-analyzing the company.")
+            st.info("Valuation unavailable - try re-analyzing the company.")
 
         st.divider()
-        st.markdown("### 📈 5-Year Trends")
+        st.markdown("### 5-Year Trends")
         ch1, ch2 = st.columns(2)
         with ch1:
             rev_df = build_trend_df(income, "revenue", "Revenue")
@@ -242,7 +231,6 @@ if "profile" in st.session_state:
                 st.markdown("**Operating Cash Flow**")
                 st.bar_chart(ocf_df)
 
-    # ================= STATEMENTS =================
     with tab1:
         st.markdown("**Income Statement** (last 5 years, USD)")
         show_statement(income, {
@@ -277,10 +265,10 @@ if "profile" in st.session_state:
 
             def fmt(val, row_name):
                 if val is None:
-                    return "—"
+                    return "-"
                 if row_name in pct_rows:
-                    return f"{val*100:.1f}%"
-                return f"{val:.2f}"
+                    return format(val*100, ".1f") + "%"
+                return format(val, ".2f")
 
             years = [row["Year"] for row in ratios]
             ratio_names = [k for k in ratios[0].keys() if k != "Year"]
@@ -290,15 +278,14 @@ if "profile" in st.session_state:
             st.dataframe(pd.DataFrame(text_table, index=years).T,
                         use_container_width=True)
             st.caption(
-                "Current Ratio >1 = can cover short-term bills · "
-                "Higher margins/ROE = more profitable · "
-                "Debt-to-Equity: higher = more leverage/risk"
+                "Current Ratio above 1 = can cover short-term bills. "
+                "Higher margins/ROE = more profitable. "
+                "Debt-to-Equity: higher = more leverage/risk."
             )
 
-    # ================= VALUATION =================
     with tab5:
-        st.markdown("**FCFF — Free Cash Flow to the Firm** (last 5 years, USD)")
-        st.caption("FCFF = Operating Cash Flow + Interest×(1−Tax) − CapEx")
+        st.markdown("**FCFF - Free Cash Flow to the Firm** (last 5 years, USD)")
+        st.caption("FCFF = Operating Cash Flow + Interest x (1 - Tax) - CapEx")
         fcff_rows = calculate_fcff(income, cashflow)
         if fcff_rows:
             display_rows = ["Operating Cash Flow", "Interest (after-tax)",
@@ -307,14 +294,14 @@ if "profile" in st.session_state:
             table = {}
             for name in display_rows:
                 table[name] = [
-                    f"{r[name]:,.0f}" if r.get(name) is not None else "—"
+                    format(r[name], ",.0f") if r.get(name) is not None else "-"
                     for r in fcff_rows
                 ]
             st.dataframe(pd.DataFrame(table, index=years).T,
                         use_container_width=True)
 
         st.divider()
-        st.markdown("**WACC — Weighted Average Cost of Capital**")
+        st.markdown("**WACC - Weighted Average Cost of Capital**")
         col_a, col_b = st.columns(2)
         with col_a:
             rf = st.slider("Risk-Free Rate (10Y Treasury) %", 0.0, 8.0, 4.3, 0.1) / 100
@@ -324,16 +311,16 @@ if "profile" in st.session_state:
                                    risk_free_rate=rf, equity_risk_premium=erp)
         if wacc_data:
             m1, m2, m3 = st.columns(3)
-            m1.metric("WACC", f"{wacc_data['WACC']*100:.2f}%")
-            m2.metric("Cost of Equity", f"{wacc_data['Cost of Equity (Re)']*100:.2f}%")
-            m3.metric("Cost of Debt", f"{wacc_data['Cost of Debt (Rd)']*100:.2f}%")
+            m1.metric("WACC", format(wacc_data["WACC"]*100, ".2f") + "%")
+            m2.metric("Cost of Equity", format(wacc_data["Cost of Equity (Re)"]*100, ".2f") + "%")
+            m3.metric("Cost of Debt", format(wacc_data["Cost of Debt (Rd)"]*100, ".2f") + "%")
             current_wacc = wacc_data["WACC"]
         else:
             st.warning("Could not calculate WACC.")
             current_wacc = None
 
         st.divider()
-        st.markdown("### 🎯 DCF Intrinsic Value")
+        st.markdown("### DCF Intrinsic Value")
         col_g, col_t = st.columns(2)
         with col_g:
             growth = st.slider("FCFF Growth Rate (next 5 yrs) %", 0.0, 20.0, 8.0, 0.5) / 100
@@ -352,44 +339,44 @@ if "profile" in st.session_state:
                 mprice = dcf["market_price"]
                 upside = dcf["upside"]
                 r1, r2, r3 = st.columns(3)
-                r1.metric("Intrinsic Value / Share", f"${intrinsic:,.2f}")
-                r2.metric("Current Market Price", f"${mprice:,.2f}")
+                r1.metric("Intrinsic Value / Share", "$" + format(intrinsic, ",.2f"))
+                r2.metric("Current Market Price", "$" + format(mprice, ",.2f"))
                 r3.metric("Upside / (Downside)",
-                          f"{upside*100:+.1f}%" if upside is not None else "N/A")
+                          format(upside*100, "+.1f") + "%" if upside is not None else "N/A")
 
                 mos = calculate_margin_of_safety(intrinsic, mprice)
-                st.markdown("**🛡️ Margin of Safety**")
+                st.markdown("**Margin of Safety**")
                 required_mos = st.slider(
                     "Required Margin of Safety % (your risk buffer)", 0, 50, 25, 5,
                 ) / 100
                 if mos is not None:
-                    mos_display = f"{mos*100:+.1f}%" if mos > -1 else "None (overvalued)"
+                    mos_display = format(mos*100, "+.1f") + "%" if mos > -1 else "None (overvalued)"
                     ms1, ms2 = st.columns(2)
                     ms1.metric("Actual Margin of Safety", mos_display)
-                    ms2.metric("Required (your setting)", f"{required_mos*100:.0f}%")
+                    ms2.metric("Required (your setting)", format(required_mos*100, ".0f") + "%")
                     if mos >= required_mos:
-                        st.success(f"✅ Meets your margin of safety ({mos*100:.0f}%).")
+                        st.success("Meets your margin of safety (" + format(mos*100, ".0f") + "%).")
                     elif mos > 0:
-                        st.warning(f"⚠️ Below required buffer ({mos*100:.0f}% vs {required_mos*100:.0f}%).")
+                        st.warning("Below required buffer (" + format(mos*100, ".0f") + "% vs " + format(required_mos*100, ".0f") + "%).")
                     else:
-                        st.error("❌ No margin of safety — trades above intrinsic value.")
+                        st.error("No margin of safety - trades above intrinsic value.")
 
                 if upside is not None:
                     if upside > 0.15:
-                        st.success(f"📈 Potentially UNDERVALUED — ~{upside*100:.0f}% above price.")
+                        st.success("Potentially UNDERVALUED - about " + format(upside*100, ".0f") + "% above price.")
                     elif upside < -0.15:
-                        st.error(f"📉 Potentially OVERVALUED — ~{abs(upside)*100:.0f}% below price.")
+                        st.error("Potentially OVERVALUED - about " + format(abs(upside)*100, ".0f") + "% below price.")
                     else:
-                        st.info("➖ Roughly FAIRLY VALUED.")
+                        st.info("Roughly FAIRLY VALUED.")
 
                 st.markdown("**Valuation Breakdown**")
                 breakdown = {
-                    "Base FCFF (latest)": f"${dcf['base_fcff']:,.0f}",
-                    "PV of 5-yr FCFF": f"${dcf['pv_fcff_total']:,.0f}",
-                    "PV of Terminal Value": f"${dcf['pv_terminal']:,.0f}",
-                    "Enterprise Value": f"${dcf['enterprise_value']:,.0f}",
-                    "Equity Value": f"${dcf['equity_value']:,.0f}",
-                    "Shares Outstanding": f"{dcf['shares']:,.0f}" if dcf['shares'] else "N/A",
+                    "Base FCFF (latest)": "$" + format(dcf["base_fcff"], ",.0f"),
+                    "PV of 5-yr FCFF": "$" + format(dcf["pv_fcff_total"], ",.0f"),
+                    "PV of Terminal Value": "$" + format(dcf["pv_terminal"], ",.0f"),
+                    "Enterprise Value": "$" + format(dcf["enterprise_value"], ",.0f"),
+                    "Equity Value": "$" + format(dcf["equity_value"], ",.0f"),
+                    "Shares Outstanding": format(dcf["shares"], ",.0f") if dcf["shares"] else "N/A",
                 }
                 st.dataframe(
                     pd.DataFrame(list(breakdown.items()),
@@ -398,66 +385,64 @@ if "profile" in st.session_state:
                 )
                 if dcf["enterprise_value"]:
                     tv_pct = dcf["pv_terminal"] / dcf["enterprise_value"] * 100
-                    st.caption(f"⚠️ {tv_pct:.0f}% of enterprise value is terminal value.")
+                    st.caption(format(tv_pct, ".0f") + "% of enterprise value is terminal value.")
 
                 st.session_state["dcf"] = dcf
 
                 st.divider()
-                st.markdown("### 🔬 Sensitivity Analysis")
+                st.markdown("### Sensitivity Analysis")
                 sens = sensitivity_analysis(income, cashflow, balance, profile,
                                             current_wacc, terminal_growth=term_growth)
                 if sens:
                     wacc_list, growth_list, grid = sens
-                    col_labels = [f"g={g*100:.0f}%" for g in growth_list]
-                    row_labels = [f"WACC={w*100:.1f}%" for w in wacc_list]
+                    col_labels = ["g=" + format(g*100, ".0f") + "%" for g in growth_list]
+                    row_labels = ["WACC=" + format(w*100, ".1f") + "%" for w in wacc_list]
                     cell_text = []
                     for row in grid:
                         cell_text.append([
-                            f"${v:,.0f}" if v is not None else "—" for v in row
+                            "$" + format(v, ",.0f") if v is not None else "-" for v in row
                         ])
                     st.dataframe(
                         pd.DataFrame(cell_text, index=row_labels, columns=col_labels),
                         use_container_width=True,
                     )
-                    st.caption(f"Current price: ${mprice:,.2f}. Value rises with growth, falls with WACC.")
+                    st.caption("Current price: $" + format(mprice, ",.2f") + ". Value rises with growth, falls with WACC.")
 
-    # ================= AI ANALYSIS =================
     with tab6:
-        st.markdown("### 🤖 AI Investment Analysis")
+        st.markdown("### AI Investment Analysis")
         st.caption("AI narrative (Gemini) from calculated metrics only. Not advice.")
         dcf_for_ai = st.session_state.get("dcf")
         if dcf_for_ai is None:
-            st.info("Valuation unavailable — try re-analyzing the company.")
+            st.info("Valuation unavailable - try re-analyzing the company.")
         else:
-            if st.button("🤖 Generate AI Bull & Bear Case"):
+            if st.button("Generate AI Bull & Bear Case"):
                 with st.spinner("Gemini is analyzing..."):
                     result = get_ai_analysis(profile, ratios, dcf_for_ai)
                 st.session_state["ai_result"] = result
             result = st.session_state.get("ai_result")
             if result:
                 if result.get("error"):
-                    st.error(f"AI analysis failed: {result['error']}")
+                    st.error("AI analysis failed: " + str(result["error"]))
                 else:
-                    st.success("✅ AI analysis generated (based on calculated metrics)")
+                    st.success("AI analysis generated (based on calculated metrics)")
                     c_bull, c_bear = st.columns(2)
                     with c_bull:
-                        st.markdown("#### 📈 Bull Case")
+                        st.markdown("#### Bull Case")
                         st.markdown(result.get("bull") or "_No bull case._")
                     with c_bear:
-                        st.markdown("#### 📉 Bear Case")
+                        st.markdown("#### Bear Case")
                         st.markdown(result.get("bear") or "_No bear case._")
-                    st.caption("⚠️ AI narrative for education. Not investment advice.")
+                    st.caption("AI narrative for education. Not investment advice.")
 
-    # ================= RECOMMENDATION =================
     with tab7:
-        st.markdown("### 🏛️ Investment Committee Recommendation")
+        st.markdown("### Investment Committee Recommendation")
         st.caption(
             "Transparent rule-based scoring (valuation + margin of safety + "
             "financial health), narrated by AI. The decision is deterministic."
         )
         dcf_for_rec = st.session_state.get("dcf")
         if dcf_for_rec is None:
-            st.info("Valuation unavailable — try re-analyzing the company.")
+            st.info("Valuation unavailable - try re-analyzing the company.")
         else:
             upside = dcf_for_rec.get("upside")
             intrinsic = dcf_for_rec.get("intrinsic_per_share")
@@ -466,40 +451,40 @@ if "profile" in st.session_state:
             rec = get_recommendation(upside, mos, ratios)
 
             if rec["color"] == "success":
-                st.success(f"## {rec['recommendation']}")
+                st.success("## " + rec["recommendation"])
             elif rec["color"] == "warning":
-                st.warning(f"## {rec['recommendation']}")
+                st.warning("## " + rec["recommendation"])
             elif rec["color"] == "error":
-                st.error(f"## {rec['recommendation']}")
+                st.error("## " + rec["recommendation"])
             else:
-                st.info(f"## {rec['recommendation']}")
+                st.info("## " + rec["recommendation"])
 
             cc1, cc2 = st.columns(2)
             cc1.metric("Confidence Level", rec["confidence_label"])
-            cc2.metric("Composite Score", f"{rec['total_score']:+d}")
+            cc2.metric("Composite Score", format(rec["total_score"], "+d"))
 
             st.markdown("**Score Components**")
             comp = rec["components"]
             st.dataframe(pd.DataFrame({
                 "Dimension": ["Valuation", "Margin of Safety", "Financial Health"],
-                "Score": [f"{comp['valuation']:+d}",
-                          f"{comp['margin_of_safety']:+d}",
-                          f"{comp['financial_health']:+d}"],
+                "Score": [format(comp["valuation"], "+d"),
+                          format(comp["margin_of_safety"], "+d"),
+                          format(comp["financial_health"], "+d")],
             }).set_index("Dimension"), use_container_width=True)
 
             sw1, sw2 = st.columns(2)
             with sw1:
-                st.markdown("**✅ Financial Strengths**")
+                st.markdown("**Financial Strengths**")
                 if rec["strengths"]:
                     for s in rec["strengths"]:
-                        st.markdown(f"- {s}")
+                        st.markdown("- " + s)
                 else:
                     st.markdown("_None identified._")
             with sw2:
-                st.markdown("**⚠️ Financial Weaknesses**")
+                st.markdown("**Financial Weaknesses**")
                 if rec["weaknesses"]:
                     for w in rec["weaknesses"]:
-                        st.markdown(f"- {w}")
+                        st.markdown("- " + w)
                 else:
                     st.markdown("_None identified._")
 
@@ -509,23 +494,23 @@ if "profile" in st.session_state:
                 st.markdown("_Supporting:_")
                 if rec["supporting"]:
                     for s in rec["supporting"]:
-                        st.markdown(f"- {s}")
+                        st.markdown("- " + s)
                 else:
                     st.markdown("_None._")
             with ra2:
                 st.markdown("_Concerns:_")
-                concerns = rec["opposing"] + [f"{w}" for w in rec["weaknesses"]]
+                concerns = rec["opposing"] + list(rec["weaknesses"])
                 if concerns:
                     for c in concerns:
-                        st.markdown(f"- {c}")
+                        st.markdown("- " + c)
                 else:
                     st.markdown("_None._")
             if rec.get("context_notes"):
                 for note in rec["context_notes"]:
-                    st.caption(f"ℹ️ {note}")
+                    st.caption(note)
 
             st.divider()
-            st.markdown("**📝 AI Investment Memo**")
+            st.markdown("**AI Investment Memo**")
             if st.button("Generate Investment Memo"):
                 with st.spinner("Gemini is writing the memo..."):
                     memo_result = get_investment_memo(profile, ratios, dcf_for_rec, rec)
@@ -533,17 +518,10 @@ if "profile" in st.session_state:
             memo_result = st.session_state.get("memo_result")
             if memo_result:
                 if memo_result.get("error"):
-                    st.error(f"Memo failed: {memo_result['error']}")
+                    st.error("Memo failed: " + str(memo_result["error"]))
                 else:
                     st.markdown(memo_result["memo"])
-                    st.caption("⚠️ AI-written memo. Educational only — not investment advice.")
+                    st.caption("AI-written memo. Educational only - not investment advice.")
 
-# --- Footer ---
 st.divider()
-st.markdown(
-    "<p style='text-align:center; color:gray; font-size:0.85rem'>"
-    "FinSight AI · Built with Streamlit, Financial Modeling Prep & Google Gemini · "
-    "For educational and demonstration purposes only — not investment advice."
-    "</p>",
-    unsafe_allow_html=True,
-)
+st.caption("FinSight AI - Built with Streamlit, Financial Modeling Prep and Google Gemini. For educational and demonstration purposes only - not investment advice.")
