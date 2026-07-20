@@ -6,7 +6,24 @@ import requests
 from dotenv import load_dotenv
 
 load_dotenv()
-API_KEY = os.getenv("FMP_API_KEY")
+
+
+def _get_key(name):
+    """
+    Read a secret from Streamlit's secrets (when deployed) OR the local
+    .env file (when running locally). Tries Streamlit first, falls back
+    to environment. This lets the same code work both places.
+    """
+    try:
+        import streamlit as st
+        if name in st.secrets:
+            return st.secrets[name]
+    except Exception:
+        pass
+    return os.getenv(name)
+
+
+API_KEY = _get_key("FMP_API_KEY")
 BASE_URL = "https://financialmodelingprep.com/stable"
 
 def get_company_profile(ticker):

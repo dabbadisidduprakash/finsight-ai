@@ -14,7 +14,20 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+
+def _get_key(name):
+    """Read from Streamlit secrets (deployed) or .env (local)."""
+    try:
+        import streamlit as st
+        if name in st.secrets:
+            return st.secrets[name]
+    except Exception:
+        pass
+    return os.getenv(name)
+
+
+GEMINI_API_KEY = _get_key("GEMINI_API_KEY")
 
 # The free tier uses Flash-class models (Pro is paid-only as of 2026).
 MODEL_NAME = "gemini-2.5-flash"
