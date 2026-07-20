@@ -1,6 +1,6 @@
 """
 app.py - Streamlit UI for FinSight AI.
-Day 11: added Dashboard (overview + charts + executive summary) as first tab.
+Day 13: polished header, footer, styling, and corrected recommendation labels.
 """
 import streamlit as st
 import pandas as pd
@@ -25,18 +25,36 @@ from src.ai_analysis import (
 )
 from src.recommendation import get_recommendation
 
-st.set_page_config(page_title="FinSight AI", page_icon="📊", layout="wide")
+st.set_page_config(
+    page_title="FinSight AI",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
-st.title("📊 FinSight AI")
-st.caption("AI Investment Committee Assistant")
+# --- Header ---
+st.markdown(
+    "<h1 style='margin-bottom:0'>📊 FinSight AI</h1>"
+    "<p style='color:gray; margin-top:0; font-size:1.05rem'>"
+    "AI Investment Committee Assistant &nbsp;·&nbsp; DCF Valuation · Ratio Analysis · "
+    "Grounded AI Insight</p>",
+    unsafe_allow_html=True,
+)
 st.divider()
 
-ticker = st.text_input(
-    "Enter a US stock ticker (e.g. AAPL, MSFT, GOOGL):",
-    value="AAPL",
-).strip().upper()
+# --- Search ---
+c_input, c_btn = st.columns([4, 1])
+with c_input:
+    ticker = st.text_input(
+        "US stock ticker",
+        value="AAPL",
+        label_visibility="collapsed",
+        placeholder="Enter a US stock ticker (e.g. AAPL, MSFT, GOOGL)",
+    ).strip().upper()
+with c_btn:
+    analyze = st.button("🔍 Analyze", use_container_width=True)
 
-if st.button("Analyze Company"):
+if analyze:
     if not ticker:
         st.warning("Please enter a ticker symbol.")
     else:
@@ -49,7 +67,8 @@ if st.button("Analyze Company"):
         if profile is None:
             st.error(
                 f"Could not find data for '{ticker}'. "
-                "Check the ticker, or your API key may have hit its daily limit."
+                "Check the ticker (US-listed only), or the API key may have "
+                "hit its daily limit."
             )
         else:
             st.session_state["profile"] = profile
@@ -59,6 +78,7 @@ if st.button("Analyze Company"):
             st.session_state.pop("ai_result", None)
             st.session_state.pop("memo_result", None)
             st.session_state.pop("exec_summary", None)
+            st.session_state.pop("dcf", None)
 
 if "profile" in st.session_state:
     profile = st.session_state["profile"]
@@ -66,40 +86,38 @@ if "profile" in st.session_state:
     balance = st.session_state.get("balance")
     cashflow = st.session_state.get("cashflow")
 
-    col_logo, col_info = st.columns([1, 5])
+    col_logo, col_info = st.columns([1, 6])
     with col_logo:
         if profile.get("image"):
-            st.image(profile["image"], width=80)
+            st.image(profile["image"], width=72)
     with col_info:
         st.subheader(profile.get("companyName", "Unknown"))
         mcap = profile.get("marketCap")
-        mcap_str = f"${mcap:,}" if isinstance(mcap, (int, float)) else "N/A"
-        st.write(
-            f"**Sector:** {profile.get('sector', 'N/A')}  |  "
-            f"**Price:** ${profile.get('price', 'N/A')}  |  "
+        mcap_str = f"${mcap:,.0f}" if isinstance(mcap, (int, float)) else "N/A"
+        price_val = profile.get("price")
+        price_txt = f"${price_val:,.2f}" if isinstance(price_val, (int, float)) else "N/A"
+        st.markdown(
+            f"**Sector:** {profile.get('sector', 'N/A')} &nbsp;|&nbsp; "
+            f"**Price:** {price_txt} &nbsp;|&nbsp; "
             f"**Market Cap:** {mcap_str}"
         )
 
     st.divider()
 
-    # Compute shared values once (used by dashboard + recommendation)
     ratios = calculate_ratios(income, balance, cashflow, profile)
 
-    # Compute a DEFAULT DCF up front so the dashboard always has a valuation,
-    # regardless of which tab the user visits. The Valuation tab can still
-    # recompute with custom slider assumptions and overwrite this.
+    # Default DCF up front so the dashboard always has a valuation
     if "dcf" not in st.session_state:
         default_wacc_data = calculate_wacc(profile, income, balance)
         if default_wacc_data:
             default_dcf = run_dcf(
                 income, cashflow, balance, profile,
                 default_wacc_data["WACC"],
-                growth_rate=0.08,
-                terminal_growth=0.025,
+                growth_rate=0.08, terminal_growth=0.025,
             )
             if default_dcf:
                 st.session_state["dcf"] = default_dcf
-    
+
     tabs = st.tabs(
         ["🏠 Dashboard", "📈 Income Statement", "⚖️ Balance Sheet",
          "💵 Cash Flow", "📊 Ratios", "🧮 Valuation", "🤖 AI Analysis",
@@ -129,7 +147,6 @@ if "profile" in st.session_state:
         )
 
     def build_trend_df(data, field, label):
-        """Make a small DataFrame of one field over the years, oldest->newest, for charts."""
         if not data:
             return None
         rows = []
@@ -140,16 +157,13 @@ if "profile" in st.session_state:
                 rows.append({"Year": year, label: val})
         if not rows:
             return None
-        df = pd.DataFrame(rows)
-        # FMP returns newest first; reverse for left-to-right chronological charts
-        df = df.iloc[::-1].reset_index(drop=True)
+        df = pd.DataFrame(rows).iloc[::-1].reset_index(drop=True)
         return df.set_index("Year")
 
     # ================= DASHBOARD =================
     with tab_dash:
         st.markdown("## 🏠 Company Dashboard")
 
-        # --- Top metric row ---
         d1, d2, d3, d4 = st.columns(4)
         price = profile.get("price")
         d1.metric("Price", f"${price:,.2f}" if isinstance(price, (int, float)) else "N/A")
@@ -162,7 +176,6 @@ if "profile" in st.session_state:
 
         st.divider()
 
-        # --- Valuation verdict (if DCF has been run) ---
         dcf = st.session_state.get("dcf")
         if dcf and dcf.get("intrinsic_per_share") is not None:
             v1, v2, v3 = st.columns(3)
@@ -176,20 +189,17 @@ if "profile" in st.session_state:
                 dcf["intrinsic_per_share"], dcf["market_price"]
             )
             rec = get_recommendation(up, mos, ratios)
+            banner = f"**Recommendation: {rec['recommendation']}** " \
+                     f"(Confidence: {rec['confidence_label']})"
             if rec["color"] == "success":
-                st.success(f"**Recommendation: {rec['recommendation']}** "
-                           f"(Confidence: {rec['confidence_label']})")
+                st.success(banner)
             elif rec["color"] == "warning":
-                st.warning(f"**Recommendation: {rec['recommendation']}** "
-                           f"(Confidence: {rec['confidence_label']})")
+                st.warning(banner)
             elif rec["color"] == "error":
-                st.error(f"**Recommendation: {rec['recommendation']}** "
-                         f"(Confidence: {rec['confidence_label']})")
+                st.error(banner)
             else:
-                st.info(f"**Recommendation: {rec['recommendation']}** "
-                        f"(Confidence: {rec['confidence_label']})")
+                st.info(banner)
 
-            # --- AI Executive Summary ---
             if st.button("🤖 Generate Executive Summary"):
                 with st.spinner("Gemini is summarizing..."):
                     es = get_executive_summary(profile, ratios, dcf, rec)
@@ -202,14 +212,9 @@ if "profile" in st.session_state:
                     st.markdown("**📋 Executive Summary**")
                     st.info(es["summary"])
         else:
-            st.info(
-                "👉 Open the **🧮 Valuation** tab and let the DCF run, then return "
-                "here to see the valuation verdict and recommendation."
-            )
+            st.info("Valuation unavailable — try re-analyzing the company.")
 
         st.divider()
-
-        # --- Trend charts ---
         st.markdown("### 📈 5-Year Trends")
         ch1, ch2 = st.columns(2)
         with ch1:
@@ -222,7 +227,6 @@ if "profile" in st.session_state:
                 st.markdown("**Net Income**")
                 st.bar_chart(ni_df)
         with ch2:
-            # FCFF trend from our calculation
             fcff_rows = calculate_fcff(income, cashflow)
             if fcff_rows:
                 fcff_df = pd.DataFrame([
@@ -286,15 +290,15 @@ if "profile" in st.session_state:
             st.dataframe(pd.DataFrame(text_table, index=years).T,
                         use_container_width=True)
             st.caption(
-                "Current Ratio >1 = can cover short-term bills. "
-                "Higher margins/ROE = more profitable. "
-                "Debt-to-Equity: higher = more leverage/risk."
+                "Current Ratio >1 = can cover short-term bills · "
+                "Higher margins/ROE = more profitable · "
+                "Debt-to-Equity: higher = more leverage/risk"
             )
 
     # ================= VALUATION =================
     with tab5:
         st.markdown("**FCFF — Free Cash Flow to the Firm** (last 5 years, USD)")
-        st.caption("FCFF = Operating Cash Flow + Interest×(1−Tax) − CapEx.")
+        st.caption("FCFF = Operating Cash Flow + Interest×(1−Tax) − CapEx")
         fcff_rows = calculate_fcff(income, cashflow)
         if fcff_rows:
             display_rows = ["Operating Cash Flow", "Interest (after-tax)",
@@ -423,7 +427,7 @@ if "profile" in st.session_state:
         st.caption("AI narrative (Gemini) from calculated metrics only. Not advice.")
         dcf_for_ai = st.session_state.get("dcf")
         if dcf_for_ai is None:
-            st.info("👉 Open the **🧮 Valuation** tab first, then return here.")
+            st.info("Valuation unavailable — try re-analyzing the company.")
         else:
             if st.button("🤖 Generate AI Bull & Bear Case"):
                 with st.spinner("Gemini is analyzing..."):
@@ -453,7 +457,7 @@ if "profile" in st.session_state:
         )
         dcf_for_rec = st.session_state.get("dcf")
         if dcf_for_rec is None:
-            st.info("👉 Open the **🧮 Valuation** tab first, then return here.")
+            st.info("Valuation unavailable — try re-analyzing the company.")
         else:
             upside = dcf_for_rec.get("upside")
             intrinsic = dcf_for_rec.get("intrinsic_per_share")
@@ -499,6 +503,27 @@ if "profile" in st.session_state:
                 else:
                     st.markdown("_None identified._")
 
+            st.markdown("**Reasons For / Against**")
+            ra1, ra2 = st.columns(2)
+            with ra1:
+                st.markdown("_Supporting:_")
+                if rec["supporting"]:
+                    for s in rec["supporting"]:
+                        st.markdown(f"- {s}")
+                else:
+                    st.markdown("_None._")
+            with ra2:
+                st.markdown("_Concerns:_")
+                concerns = rec["opposing"] + [f"{w}" for w in rec["weaknesses"]]
+                if concerns:
+                    for c in concerns:
+                        st.markdown(f"- {c}")
+                else:
+                    st.markdown("_None._")
+            if rec.get("context_notes"):
+                for note in rec["context_notes"]:
+                    st.caption(f"ℹ️ {note}")
+
             st.divider()
             st.markdown("**📝 AI Investment Memo**")
             if st.button("Generate Investment Memo"):
@@ -512,3 +537,13 @@ if "profile" in st.session_state:
                 else:
                     st.markdown(memo_result["memo"])
                     st.caption("⚠️ AI-written memo. Educational only — not investment advice.")
+
+# --- Footer ---
+st.divider()
+st.markdown(
+    "<p style='text-align:center; color:gray; font-size:0.85rem'>"
+    "FinSight AI · Built with Streamlit, Financial Modeling Prep & Google Gemini · "
+    "For educational and demonstration purposes only — not investment advice."
+    "</p>",
+    unsafe_allow_html=True,
+)

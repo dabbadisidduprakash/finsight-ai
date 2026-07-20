@@ -1,19 +1,11 @@
 """
 recommendation.py - rule-based investment recommendation scoring.
-
-This is DETERMINISTIC logic (not AI). It scores a company across three
-dimensions — valuation, margin of safety, and financial health — and
-produces a recommendation with a confidence level. Every point is
-transparent and defensible: you can explain exactly why the score is
-what it is. The AI memo (elsewhere) narrates this; it does NOT decide it.
+Deterministic logic (not AI). Scores valuation, margin of safety, and
+financial health into a recommendation with a confidence level.
 """
 
 
 def _score_valuation(upside):
-    """
-    Score based on DCF upside/(downside).
-    Returns (points, reason). More upside = higher score.
-    """
     if upside is None:
         return 0, "Valuation inconclusive (no DCF result)."
     if upside > 0.30:
@@ -28,7 +20,6 @@ def _score_valuation(upside):
 
 
 def _score_margin_of_safety(mos):
-    """Score based on margin of safety buffer."""
     if mos is None:
         return 0, "Margin of safety not available."
     if mos > 0.25:
@@ -41,18 +32,13 @@ def _score_margin_of_safety(mos):
 
 
 def _score_financial_health(ratios):
-    """
-    Score based on the latest year's profitability, leverage, liquidity.
-    Returns (points, list_of_reasons, strengths, weaknesses).
-    """
     if not ratios:
         return 0, ["No ratio data."], [], []
 
-    r = ratios[0]  # latest year
+    r = ratios[0]
     points = 0
     reasons, strengths, weaknesses = [], [], []
 
-    # Profitability — net margin
     nm = r.get("Net Margin")
     if isinstance(nm, (int, float)):
         if nm > 0.15:
@@ -62,7 +48,6 @@ def _score_financial_health(ratios):
             points -= 1
             weaknesses.append(f"Thin net margin ({nm*100:.0f}%)")
 
-    # Returns — ROE
     roe = r.get("ROE")
     if isinstance(roe, (int, float)):
         if roe > 0.20:
@@ -72,7 +57,6 @@ def _score_financial_health(ratios):
             points -= 1
             weaknesses.append(f"Low ROE ({roe*100:.0f}%)")
 
-    # Leverage — debt-to-equity
     de = r.get("Debt-to-Equity")
     if isinstance(de, (int, float)):
         if de > 2.0:
@@ -82,7 +66,6 @@ def _score_financial_health(ratios):
             points += 1
             strengths.append(f"Low leverage (D/E {de:.1f})")
 
-    # Liquidity — current ratio
     cr = r.get("Current Ratio")
     if isinstance(cr, (int, float)):
         if cr < 1.0:
@@ -95,36 +78,23 @@ def _score_financial_health(ratios):
 
 
 def get_recommendation(upside, mos, ratios):
-    """
-    Combine all scores into a final recommendation + confidence.
-    Returns a dict with recommendation, confidence, total_score,
-    and the supporting detail lists.
-    """
     val_pts, val_reason = _score_valuation(upside)
     mos_pts, mos_reason = _score_margin_of_safety(mos)
     fin_pts, fin_reasons, strengths, weaknesses = _score_financial_health(ratios)
 
     total = val_pts + mos_pts + fin_pts
 
-    # Map total score to a recommendation
-    # Range roughly -5 to +6
     if total >= 4:
-        rec = "BUY"
-        color = "success"
+        rec, color = "BUY", "success"
     elif total >= 1:
-        rec = "ACCUMULATE / HOLD"
-        color = "info"
+        rec, color = "ACCUMULATE / HOLD", "info"
     elif total >= -1:
-        rec = "HOLD"
-        color = "info"
+        rec, color = "HOLD", "info"
     elif total >= -3:
-        rec = "REDUCE"
-        color = "warning"
+        rec, color = "REDUCE", "warning"
     else:
-        rec = "AVOID / SELL"
-        color = "error"
+        rec, color = "AVOID / SELL", "error"
 
-    # Confidence = how far from neutral, scaled
     confidence = min(abs(total) / 6.0, 1.0)
     if confidence > 0.66:
         conf_label = "High"
@@ -135,13 +105,14 @@ def get_recommendation(upside, mos, ratios):
 
     supporting = []
     opposing = []
+    context_notes = []
     for pts, reason in [(val_pts, val_reason), (mos_pts, mos_reason)]:
         if pts > 0:
             supporting.append(reason)
         elif pts < 0:
             opposing.append(reason)
         else:
-            supporting.append(reason)  # neutral notes go with context
+            context_notes.append(reason)
 
     return {
         "recommendation": rec,
@@ -155,6 +126,7 @@ def get_recommendation(upside, mos, ratios):
         "weaknesses": weaknesses,
         "supporting": supporting,
         "opposing": opposing,
+        "context_notes": context_notes,
         "components": {
             "valuation": val_pts,
             "margin_of_safety": mos_pts,
@@ -164,14 +136,13 @@ def get_recommendation(upside, mos, ratios):
 
 
 if __name__ == "__main__":
-    # Test with sample numbers
     fake_ratios = [{
         "Net Margin": 0.269, "ROE": 1.519, "ROA": 0.312,
         "Debt-to-Equity": 1.52, "Current Ratio": 0.89, "P/E": 44.56,
     }]
     rec = get_recommendation(upside=-0.647, mos=-1.0, ratios=fake_ratios)
     print("Recommendation:", rec["recommendation"])
-    print("Confidence:", rec["confidence_label"], f"({rec['confidence']*100:.0f}%)")
-    print("Total score:", rec["total_score"])
-    print("Strengths:", rec["strengths"])
-    print("Weaknesses:", rec["weaknesses"])
+    print("Confidence:", rec["confidence_label"])
+    print("Score:", rec["total_score"])
+    print("Supporting:", rec["supporting"])
+    print("Concerns:", rec["opposing"] + rec["weaknesses"])
