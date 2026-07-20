@@ -172,6 +172,43 @@ disclaimer that this is not investment advice.
     except Exception as e:
         return {"memo": None, "error": f"AI memo failed: {e}"}
 
+def get_executive_summary(profile, ratios, dcf, recommendation):
+    """
+    A short, top-level executive summary of the entire analysis.
+    Narrates the recommendation and the 2-3 most important points.
+    Returns {"summary": "...", "error": None}.
+    """
+    if not GEMINI_API_KEY:
+        return {"summary": None, "error": "GEMINI_API_KEY not found."}
+
+    context = _build_context(profile, ratios, dcf)
+    name = profile.get("companyName", "the company") if profile else "the company"
+
+    prompt = f"""Write a 2-3 sentence executive summary for an investment
+committee dashboard. Be concise and professional. Use ONLY the metrics below;
+do not invent numbers.
+
+{context}
+
+Recommendation: {recommendation['recommendation']} (confidence: {recommendation['confidence_label']})
+
+The summary should state the recommendation, the single most important reason
+(valuation vs. price), and one key strength or risk. Under 60 words. No bullet
+points — flowing prose. Do not add a disclaimer.
+"""
+
+    try:
+        from google import genai
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+        )
+        summary = response.text if hasattr(response, "text") else str(response)
+        return {"summary": summary.strip(), "error": None}
+    except Exception as e:
+        return {"summary": None, "error": f"Summary failed: {e}"}
+
 if __name__ == "__main__":
     # Standalone test with real data
     from data_fetch import (get_company_profile, get_income_statement,

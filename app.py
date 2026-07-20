@@ -1,6 +1,6 @@
 """
 app.py - Streamlit UI for FinSight AI.
-Day 10: added Investment Committee Recommendation tab.
+Day 11: added Dashboard (overview + charts + executive summary) as first tab.
 """
 import streamlit as st
 import pandas as pd
@@ -18,7 +18,11 @@ from src.valuation import (
     calculate_margin_of_safety,
     sensitivity_analysis,
 )
-from src.ai_analysis import get_ai_analysis, get_investment_memo
+from src.ai_analysis import (
+    get_ai_analysis,
+    get_investment_memo,
+    get_executive_summary,
+)
 from src.recommendation import get_recommendation
 
 st.set_page_config(page_title="FinSight AI", page_icon="📊", layout="wide")
@@ -54,9 +58,13 @@ if st.button("Analyze Company"):
             st.session_state["cashflow"] = cashflow
             st.session_state.pop("ai_result", None)
             st.session_state.pop("memo_result", None)
+            st.session_state.pop("exec_summary", None)
 
 if "profile" in st.session_state:
     profile = st.session_state["profile"]
+    income = st.session_state.get("income")
+    balance = st.session_state.get("balance")
+    cashflow = st.session_state.get("cashflow")
 
     col_logo, col_info = st.columns([1, 5])
     with col_logo:
@@ -74,85 +82,192 @@ if "profile" in st.session_state:
 
     st.divider()
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
-        ["📈 Income Statement", "⚖️ Balance Sheet", "💵 Cash Flow",
-         "📊 Ratios", "🧮 Valuation", "🤖 AI Analysis",
+    # Compute shared values once (used by dashboard + recommendation)
+    ratios = calculate_ratios(income, balance, cashflow, profile)
+
+    # Compute a DEFAULT DCF up front so the dashboard always has a valuation,
+    # regardless of which tab the user visits. The Valuation tab can still
+    # recompute with custom slider assumptions and overwrite this.
+    if "dcf" not in st.session_state:
+        default_wacc_data = calculate_wacc(profile, income, balance)
+        if default_wacc_data:
+            default_dcf = run_dcf(
+                income, cashflow, balance, profile,
+                default_wacc_data["WACC"],
+                growth_rate=0.08,
+                terminal_growth=0.025,
+            )
+            if default_dcf:
+                st.session_state["dcf"] = default_dcf
+    
+    tabs = st.tabs(
+        ["🏠 Dashboard", "📈 Income Statement", "⚖️ Balance Sheet",
+         "💵 Cash Flow", "📊 Ratios", "🧮 Valuation", "🤖 AI Analysis",
          "🏛️ Recommendation"]
     )
+    (tab_dash, tab1, tab2, tab3, tab4, tab5, tab6, tab7) = tabs
 
     def show_statement(data, key_columns):
         if not data:
             st.warning("No data available for this statement.")
             return
-
         df = pd.DataFrame(data)
-
         if "calendarYear" in df.columns:
             years = df["calendarYear"].astype(str).tolist()
         elif "date" in df.columns:
             years = df["date"].astype(str).tolist()
         else:
             years = [str(i) for i in range(len(data))]
-
         table = {}
         for raw_key, friendly_name in key_columns.items():
             if raw_key in df.columns:
                 table[friendly_name] = df[raw_key].tolist()
-
         display_df = pd.DataFrame(table, index=years).T
         st.dataframe(
             display_df.style.format("{:,.0f}", na_rep="—"),
             use_container_width=True,
         )
 
+    def build_trend_df(data, field, label):
+        """Make a small DataFrame of one field over the years, oldest->newest, for charts."""
+        if not data:
+            return None
+        rows = []
+        for item in data:
+            year = str(item.get("calendarYear") or item.get("date", ""))[:4]
+            val = item.get(field)
+            if val is not None:
+                rows.append({"Year": year, label: val})
+        if not rows:
+            return None
+        df = pd.DataFrame(rows)
+        # FMP returns newest first; reverse for left-to-right chronological charts
+        df = df.iloc[::-1].reset_index(drop=True)
+        return df.set_index("Year")
+
+    # ================= DASHBOARD =================
+    with tab_dash:
+        st.markdown("## 🏠 Company Dashboard")
+
+        # --- Top metric row ---
+        d1, d2, d3, d4 = st.columns(4)
+        price = profile.get("price")
+        d1.metric("Price", f"${price:,.2f}" if isinstance(price, (int, float)) else "N/A")
+        pe = ratios[0].get("P/E") if ratios else None
+        d2.metric("P/E", f"{pe:.1f}" if isinstance(pe, (int, float)) else "N/A")
+        nm = ratios[0].get("Net Margin") if ratios else None
+        d3.metric("Net Margin", f"{nm*100:.1f}%" if isinstance(nm, (int, float)) else "N/A")
+        roe = ratios[0].get("ROE") if ratios else None
+        d4.metric("ROE", f"{roe*100:.0f}%" if isinstance(roe, (int, float)) else "N/A")
+
+        st.divider()
+
+        # --- Valuation verdict (if DCF has been run) ---
+        dcf = st.session_state.get("dcf")
+        if dcf and dcf.get("intrinsic_per_share") is not None:
+            v1, v2, v3 = st.columns(3)
+            v1.metric("Intrinsic Value", f"${dcf['intrinsic_per_share']:,.2f}")
+            v2.metric("Market Price", f"${dcf['market_price']:,.2f}")
+            up = dcf.get("upside")
+            v3.metric("Upside/(Downside)",
+                      f"{up*100:+.1f}%" if up is not None else "N/A")
+
+            mos = calculate_margin_of_safety(
+                dcf["intrinsic_per_share"], dcf["market_price"]
+            )
+            rec = get_recommendation(up, mos, ratios)
+            if rec["color"] == "success":
+                st.success(f"**Recommendation: {rec['recommendation']}** "
+                           f"(Confidence: {rec['confidence_label']})")
+            elif rec["color"] == "warning":
+                st.warning(f"**Recommendation: {rec['recommendation']}** "
+                           f"(Confidence: {rec['confidence_label']})")
+            elif rec["color"] == "error":
+                st.error(f"**Recommendation: {rec['recommendation']}** "
+                         f"(Confidence: {rec['confidence_label']})")
+            else:
+                st.info(f"**Recommendation: {rec['recommendation']}** "
+                        f"(Confidence: {rec['confidence_label']})")
+
+            # --- AI Executive Summary ---
+            if st.button("🤖 Generate Executive Summary"):
+                with st.spinner("Gemini is summarizing..."):
+                    es = get_executive_summary(profile, ratios, dcf, rec)
+                st.session_state["exec_summary"] = es
+            es = st.session_state.get("exec_summary")
+            if es:
+                if es.get("error"):
+                    st.error(es["error"])
+                else:
+                    st.markdown("**📋 Executive Summary**")
+                    st.info(es["summary"])
+        else:
+            st.info(
+                "👉 Open the **🧮 Valuation** tab and let the DCF run, then return "
+                "here to see the valuation verdict and recommendation."
+            )
+
+        st.divider()
+
+        # --- Trend charts ---
+        st.markdown("### 📈 5-Year Trends")
+        ch1, ch2 = st.columns(2)
+        with ch1:
+            rev_df = build_trend_df(income, "revenue", "Revenue")
+            if rev_df is not None:
+                st.markdown("**Revenue**")
+                st.bar_chart(rev_df)
+            ni_df = build_trend_df(income, "netIncome", "Net Income")
+            if ni_df is not None:
+                st.markdown("**Net Income**")
+                st.bar_chart(ni_df)
+        with ch2:
+            # FCFF trend from our calculation
+            fcff_rows = calculate_fcff(income, cashflow)
+            if fcff_rows:
+                fcff_df = pd.DataFrame([
+                    {"Year": r["Year"][:4], "FCFF": r["FCFF"]}
+                    for r in fcff_rows if r.get("FCFF") is not None
+                ])
+                if not fcff_df.empty:
+                    fcff_df = fcff_df.iloc[::-1].set_index("Year")
+                    st.markdown("**Free Cash Flow (FCFF)**")
+                    st.bar_chart(fcff_df)
+            ocf_df = build_trend_df(cashflow, "operatingCashFlow", "Operating CF")
+            if ocf_df is not None:
+                st.markdown("**Operating Cash Flow**")
+                st.bar_chart(ocf_df)
+
+    # ================= STATEMENTS =================
     with tab1:
         st.markdown("**Income Statement** (last 5 years, USD)")
-        show_statement(
-            st.session_state.get("income"),
-            {
-                "revenue": "Revenue",
-                "grossProfit": "Gross Profit",
-                "operatingIncome": "Operating Income",
-                "netIncome": "Net Income",
-                "eps": "EPS",
-            },
-        )
+        show_statement(income, {
+            "revenue": "Revenue", "grossProfit": "Gross Profit",
+            "operatingIncome": "Operating Income", "netIncome": "Net Income",
+            "eps": "EPS",
+        })
 
     with tab2:
         st.markdown("**Balance Sheet** (last 5 years, USD)")
-        show_statement(
-            st.session_state.get("balance"),
-            {
-                "totalAssets": "Total Assets",
-                "totalLiabilities": "Total Liabilities",
-                "totalEquity": "Total Equity",
-                "cashAndCashEquivalents": "Cash & Equivalents",
-                "totalDebt": "Total Debt",
-            },
-        )
+        show_statement(balance, {
+            "totalAssets": "Total Assets", "totalLiabilities": "Total Liabilities",
+            "totalEquity": "Total Equity",
+            "cashAndCashEquivalents": "Cash & Equivalents", "totalDebt": "Total Debt",
+        })
 
     with tab3:
         st.markdown("**Cash Flow Statement** (last 5 years, USD)")
-        show_statement(
-            st.session_state.get("cashflow"),
-            {
-                "operatingCashFlow": "Operating Cash Flow",
-                "capitalExpenditure": "Capital Expenditure",
-                "freeCashFlow": "Free Cash Flow",
-                "netCashProvidedByOperatingActivities": "Net Operating Cash",
-            },
-        )
+        show_statement(cashflow, {
+            "operatingCashFlow": "Operating Cash Flow",
+            "capitalExpenditure": "Capital Expenditure",
+            "freeCashFlow": "Free Cash Flow",
+            "netCashProvidedByOperatingActivities": "Net Operating Cash",
+        })
 
     with tab4:
         st.markdown("**Financial Ratios** (last 5 years)")
-        ratios = calculate_ratios(
-            st.session_state.get("income"),
-            st.session_state.get("balance"),
-            st.session_state.get("cashflow"),
-            profile,
-        )
         if not ratios:
-            st.warning("Could not calculate ratios (missing data).")
+            st.warning("Could not calculate ratios.")
         else:
             pct_rows = ["Gross Margin", "Net Margin", "ROE", "ROA"]
 
@@ -165,31 +280,22 @@ if "profile" in st.session_state:
 
             years = [row["Year"] for row in ratios]
             ratio_names = [k for k in ratios[0].keys() if k != "Year"]
-
             text_table = {}
             for name in ratio_names:
                 text_table[name] = [fmt(row.get(name), name) for row in ratios]
-
-            display_df = pd.DataFrame(text_table, index=years).T
-            st.dataframe(display_df, use_container_width=True)
-
+            st.dataframe(pd.DataFrame(text_table, index=years).T,
+                        use_container_width=True)
             st.caption(
                 "Current Ratio >1 = can cover short-term bills. "
                 "Higher margins/ROE = more profitable. "
-                "Debt-to-Equity: higher = more leverage/risk. "
-                "P/E shown for latest year only."
+                "Debt-to-Equity: higher = more leverage/risk."
             )
 
+    # ================= VALUATION =================
     with tab5:
-        # ---------- FCFF ----------
         st.markdown("**FCFF — Free Cash Flow to the Firm** (last 5 years, USD)")
-        st.caption(
-            "FCFF = Operating Cash Flow + Interest×(1−Tax) − CapEx."
-        )
-        fcff_rows = calculate_fcff(
-            st.session_state.get("income"),
-            st.session_state.get("cashflow"),
-        )
+        st.caption("FCFF = Operating Cash Flow + Interest×(1−Tax) − CapEx.")
+        fcff_rows = calculate_fcff(income, cashflow)
         if fcff_rows:
             display_rows = ["Operating Cash Flow", "Interest (after-tax)",
                             "CapEx", "FCFF"]
@@ -204,23 +310,14 @@ if "profile" in st.session_state:
                         use_container_width=True)
 
         st.divider()
-
-        # ---------- WACC ----------
         st.markdown("**WACC — Weighted Average Cost of Capital**")
         col_a, col_b = st.columns(2)
         with col_a:
             rf = st.slider("Risk-Free Rate (10Y Treasury) %", 0.0, 8.0, 4.3, 0.1) / 100
         with col_b:
             erp = st.slider("Equity Risk Premium %", 3.0, 8.0, 5.0, 0.1) / 100
-
-        wacc_data = calculate_wacc(
-            profile,
-            st.session_state.get("income"),
-            st.session_state.get("balance"),
-            risk_free_rate=rf,
-            equity_risk_premium=erp,
-        )
-
+        wacc_data = calculate_wacc(profile, income, balance,
+                                   risk_free_rate=rf, equity_risk_premium=erp)
         if wacc_data:
             m1, m2, m3 = st.columns(3)
             m1.metric("WACC", f"{wacc_data['WACC']*100:.2f}%")
@@ -232,8 +329,6 @@ if "profile" in st.session_state:
             current_wacc = None
 
         st.divider()
-
-        # ---------- DCF ----------
         st.markdown("### 🎯 DCF Intrinsic Value")
         col_g, col_t = st.columns(2)
         with col_g:
@@ -244,41 +339,30 @@ if "profile" in st.session_state:
         if current_wacc is None:
             st.warning("Need WACC to run the DCF.")
         else:
-            dcf = run_dcf(
-                st.session_state.get("income"),
-                st.session_state.get("cashflow"),
-                st.session_state.get("balance"),
-                profile,
-                current_wacc,
-                growth_rate=growth,
-                terminal_growth=term_growth,
-            )
-
+            dcf = run_dcf(income, cashflow, balance, profile, current_wacc,
+                          growth_rate=growth, terminal_growth=term_growth)
             if not dcf or dcf.get("intrinsic_per_share") is None:
                 st.warning("Could not complete DCF. Try lowering terminal growth.")
             else:
                 intrinsic = dcf["intrinsic_per_share"]
-                price = dcf["market_price"]
+                mprice = dcf["market_price"]
                 upside = dcf["upside"]
-
                 r1, r2, r3 = st.columns(3)
                 r1.metric("Intrinsic Value / Share", f"${intrinsic:,.2f}")
-                r2.metric("Current Market Price", f"${price:,.2f}")
+                r2.metric("Current Market Price", f"${mprice:,.2f}")
                 r3.metric("Upside / (Downside)",
                           f"{upside*100:+.1f}%" if upside is not None else "N/A")
 
-                mos = calculate_margin_of_safety(intrinsic, price)
+                mos = calculate_margin_of_safety(intrinsic, mprice)
                 st.markdown("**🛡️ Margin of Safety**")
                 required_mos = st.slider(
                     "Required Margin of Safety % (your risk buffer)", 0, 50, 25, 5,
                 ) / 100
-
                 if mos is not None:
                     mos_display = f"{mos*100:+.1f}%" if mos > -1 else "None (overvalued)"
                     ms1, ms2 = st.columns(2)
                     ms1.metric("Actual Margin of Safety", mos_display)
                     ms2.metric("Required (your setting)", f"{required_mos*100:.0f}%")
-
                     if mos >= required_mos:
                         st.success(f"✅ Meets your margin of safety ({mos*100:.0f}%).")
                     elif mos > 0:
@@ -308,7 +392,6 @@ if "profile" in st.session_state:
                                  columns=["Item", "Value"]).set_index("Item"),
                     use_container_width=True,
                 )
-
                 if dcf["enterprise_value"]:
                     tv_pct = dcf["pv_terminal"] / dcf["enterprise_value"] * 100
                     st.caption(f"⚠️ {tv_pct:.0f}% of enterprise value is terminal value.")
@@ -317,14 +400,8 @@ if "profile" in st.session_state:
 
                 st.divider()
                 st.markdown("### 🔬 Sensitivity Analysis")
-                sens = sensitivity_analysis(
-                    st.session_state.get("income"),
-                    st.session_state.get("cashflow"),
-                    st.session_state.get("balance"),
-                    profile,
-                    current_wacc,
-                    terminal_growth=term_growth,
-                )
+                sens = sensitivity_analysis(income, cashflow, balance, profile,
+                                            current_wacc, terminal_growth=term_growth)
                 if sens:
                     wacc_list, growth_list, grid = sens
                     col_labels = [f"g={g*100:.0f}%" for g in growth_list]
@@ -338,30 +415,20 @@ if "profile" in st.session_state:
                         pd.DataFrame(cell_text, index=row_labels, columns=col_labels),
                         use_container_width=True,
                     )
-                    st.caption(f"Current price: ${price:,.2f}. Value rises with growth, falls with WACC.")
+                    st.caption(f"Current price: ${mprice:,.2f}. Value rises with growth, falls with WACC.")
 
+    # ================= AI ANALYSIS =================
     with tab6:
         st.markdown("### 🤖 AI Investment Analysis")
-        st.caption(
-            "AI-generated narrative (Gemini), reasoning ONLY from the metrics "
-            "this app calculated. Not financial advice."
-        )
-        ratios_for_ai = calculate_ratios(
-            st.session_state.get("income"),
-            st.session_state.get("balance"),
-            st.session_state.get("cashflow"),
-            profile,
-        )
+        st.caption("AI narrative (Gemini) from calculated metrics only. Not advice.")
         dcf_for_ai = st.session_state.get("dcf")
-
         if dcf_for_ai is None:
             st.info("👉 Open the **🧮 Valuation** tab first, then return here.")
         else:
             if st.button("🤖 Generate AI Bull & Bear Case"):
-                with st.spinner("Gemini is analyzing the numbers..."):
-                    result = get_ai_analysis(profile, ratios_for_ai, dcf_for_ai)
+                with st.spinner("Gemini is analyzing..."):
+                    result = get_ai_analysis(profile, ratios, dcf_for_ai)
                 st.session_state["ai_result"] = result
-
             result = st.session_state.get("ai_result")
             if result:
                 if result.get("error"):
@@ -377,65 +444,45 @@ if "profile" in st.session_state:
                         st.markdown(result.get("bear") or "_No bear case._")
                     st.caption("⚠️ AI narrative for education. Not investment advice.")
 
+    # ================= RECOMMENDATION =================
     with tab7:
         st.markdown("### 🏛️ Investment Committee Recommendation")
         st.caption(
-            "A transparent, rule-based recommendation combining valuation, "
-            "margin of safety, and financial health — then narrated by AI. "
-            "The decision is deterministic; the AI writes the memo, not the call."
-        )
-
-        ratios_for_rec = calculate_ratios(
-            st.session_state.get("income"),
-            st.session_state.get("balance"),
-            st.session_state.get("cashflow"),
-            profile,
+            "Transparent rule-based scoring (valuation + margin of safety + "
+            "financial health), narrated by AI. The decision is deterministic."
         )
         dcf_for_rec = st.session_state.get("dcf")
-
         if dcf_for_rec is None:
-            st.info(
-                "👉 Open the **🧮 Valuation** tab first so the DCF is computed, "
-                "then return here for the recommendation."
-            )
+            st.info("👉 Open the **🧮 Valuation** tab first, then return here.")
         else:
             upside = dcf_for_rec.get("upside")
             intrinsic = dcf_for_rec.get("intrinsic_per_share")
-            price = dcf_for_rec.get("market_price")
-            mos = calculate_margin_of_safety(intrinsic, price)
-
-            rec = get_recommendation(upside, mos, ratios_for_rec)
-
-            # Headline recommendation
-            rec_text = rec["recommendation"]
-            conf = rec["confidence_label"]
-            conf_pct = rec["confidence"] * 100
+            mprice = dcf_for_rec.get("market_price")
+            mos = calculate_margin_of_safety(intrinsic, mprice)
+            rec = get_recommendation(upside, mos, ratios)
 
             if rec["color"] == "success":
-                st.success(f"## {rec_text}")
+                st.success(f"## {rec['recommendation']}")
             elif rec["color"] == "warning":
-                st.warning(f"## {rec_text}")
+                st.warning(f"## {rec['recommendation']}")
             elif rec["color"] == "error":
-                st.error(f"## {rec_text}")
+                st.error(f"## {rec['recommendation']}")
             else:
-                st.info(f"## {rec_text}")
+                st.info(f"## {rec['recommendation']}")
 
             cc1, cc2 = st.columns(2)
-            cc1.metric("Confidence Level", conf)
+            cc1.metric("Confidence Level", rec["confidence_label"])
             cc2.metric("Composite Score", f"{rec['total_score']:+d}")
 
-            # Component breakdown
             st.markdown("**Score Components**")
             comp = rec["components"]
-            comp_df = pd.DataFrame({
+            st.dataframe(pd.DataFrame({
                 "Dimension": ["Valuation", "Margin of Safety", "Financial Health"],
                 "Score": [f"{comp['valuation']:+d}",
                           f"{comp['margin_of_safety']:+d}",
                           f"{comp['financial_health']:+d}"],
-            }).set_index("Dimension")
-            st.dataframe(comp_df, use_container_width=True)
+            }).set_index("Dimension"), use_container_width=True)
 
-            # Strengths & weaknesses
             sw1, sw2 = st.columns(2)
             with sw1:
                 st.markdown("**✅ Financial Strengths**")
@@ -452,38 +499,16 @@ if "profile" in st.session_state:
                 else:
                     st.markdown("_None identified._")
 
-            # Supporting / opposing
-            st.markdown("**Reasons Supporting / Against**")
-            ra1, ra2 = st.columns(2)
-            with ra1:
-                st.markdown("_Supporting:_")
-                st.markdown(f"- {rec['valuation_reason']}")
-                st.markdown(f"- {rec['mos_reason']}")
-            with ra2:
-                st.markdown("_Key concerns:_")
-                for w in rec["weaknesses"]:
-                    st.markdown(f"- {w}")
-                if not rec["weaknesses"]:
-                    st.markdown("- No major red flags in the metrics.")
-
             st.divider()
-
-            # AI investment memo
             st.markdown("**📝 AI Investment Memo**")
             if st.button("Generate Investment Memo"):
                 with st.spinner("Gemini is writing the memo..."):
-                    memo_result = get_investment_memo(
-                        profile, ratios_for_rec, dcf_for_rec, rec
-                    )
+                    memo_result = get_investment_memo(profile, ratios, dcf_for_rec, rec)
                 st.session_state["memo_result"] = memo_result
-
             memo_result = st.session_state.get("memo_result")
             if memo_result:
                 if memo_result.get("error"):
                     st.error(f"Memo failed: {memo_result['error']}")
                 else:
                     st.markdown(memo_result["memo"])
-                    st.caption(
-                        "⚠️ AI-written memo narrating a rule-based recommendation. "
-                        "Educational only — not investment advice."
-                    )
+                    st.caption("⚠️ AI-written memo. Educational only — not investment advice.")
