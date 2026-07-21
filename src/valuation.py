@@ -346,6 +346,21 @@ def sensitivity_analysis(income, cashflow, balance, profile, base_wacc,
 
     return wacc_list, growth_list, grid
 
+def is_financial_sector(profile):
+    """
+    Detect banks / insurance / financial firms. DCF (via FCFF) does NOT work
+    for these — their business IS lending/capital, so 'operating cash flow
+    minus CapEx' is meaningless and produces absurd valuations. A real analyst
+    uses P/E, P/B, or dividend-discount models for financials instead.
+    """
+    if not profile:
+        return False
+    sector = (profile.get("sector") or "").lower()
+    industry = (profile.get("industry") or "").lower()
+    flags = ["financial", "bank", "insurance", "capital markets",
+             "asset management"]
+    return any(f in sector or f in industry for f in flags)
+
 if __name__ == "__main__":
     from data_fetch import get_income_statement, get_cash_flow
 

@@ -17,6 +17,7 @@ from src.valuation import (
     run_dcf,
     calculate_margin_of_safety,
     sensitivity_analysis,
+    is_financial_sector,
 )
 from src.ai_analysis import (
     get_ai_analysis,
@@ -42,7 +43,7 @@ with c_input:
         value="AAPL",
         label_visibility="collapsed",
         placeholder="Enter a US stock ticker (e.g. AAPL, MSFT, GOOGL)",
-    ).strip().upper()
+    ).replace(" ", "").upper()
 with c_btn:
     analyze = st.button("Analyze", use_container_width=True)
 
@@ -97,6 +98,8 @@ if "profile" in st.session_state:
     st.divider()
 
     ratios = calculate_ratios(income, balance, cashflow, profile)
+
+    is_financial = is_financial_sector(profile)
 
     if "dcf" not in st.session_state:
         default_wacc_data = calculate_wacc(profile, income, balance)
@@ -167,7 +170,15 @@ if "profile" in st.session_state:
         st.divider()
 
         dcf = st.session_state.get("dcf")
-        if dcf and dcf.get("intrinsic_per_share") is not None:
+        if is_financial:
+            st.warning(
+                "**DCF not applicable.** This is a financial-sector company "
+                "(bank/insurer). Discounted cash flow does not work for financials "
+                "because their business is lending and capital itself - FCFF is "
+                "meaningless here. Analysts value these using P/E, Price-to-Book, "
+                "or dividend-discount models instead. See the Ratios tab for P/E."
+            )
+        elif dcf and dcf.get("intrinsic_per_share") is not None:
             v1, v2, v3 = st.columns(3)
             v1.metric("Intrinsic Value", "$" + format(dcf["intrinsic_per_share"], ",.2f"))
             v2.metric("Market Price", "$" + format(dcf["market_price"], ",.2f"))
