@@ -40,9 +40,9 @@ def calculate_ratios(income, balance, cashflow, profile):
 
         # Year label (fall back gracefully if a field is missing)
         year = (
-            str(inc.get("calendarYear"))
-            if inc.get("calendarYear")
-            else str(inc.get("date", i))
+            str(inc.get("fiscalYear"))
+            if inc.get("fiscalYear")
+            else str(inc.get("calendarYear") or inc.get("date", i))
         )
 
         revenue = inc.get("revenue")

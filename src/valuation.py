@@ -32,7 +32,7 @@ def calculate_fcff(income, cashflow, limit=5):
         inc = income[i]
         cf = cashflow[i]
 
-        year = str(safe_get(inc, "calendarYear", "date") or i)
+        year = str(safe_get(inc, "fiscalYear", "calendarYear", "date") or i)
 
         # Operating cash flow (field name varies across FMP responses)
         ocf = safe_get(

@@ -159,7 +159,9 @@ if "profile" in st.session_state:
             st.warning("No data available for this statement.")
             return
         df = pd.DataFrame(data)
-        if "calendarYear" in df.columns:
+        if "fiscalYear" in df.columns:
+            years = df["fiscalYear"].astype(str).tolist()
+        elif "calendarYear" in df.columns:
             years = df["calendarYear"].astype(str).tolist()
         elif "date" in df.columns:
             years = df["date"].astype(str).tolist()
@@ -186,7 +188,7 @@ if "profile" in st.session_state:
             return None
         rows = []
         for item in data:
-            year = str(item.get("calendarYear") or item.get("date", ""))[:4]
+            year = str(item.get("fiscalYear") or item.get("calendarYear") or item.get("date", ""))[:4]
             val = item.get(field)
             if val is not None:
                 rows.append({"Year": year, label: val})
@@ -207,6 +209,13 @@ if "profile" in st.session_state:
         d3.metric("Net Margin", format(nm*100, ".1f") + "%" if isinstance(nm, (int, float)) else "N/A")
         roe = ratios[0].get("ROE") if ratios else None
         d4.metric("ROE", format(roe*100, ".0f") + "%" if isinstance(roe, (int, float)) else "N/A")
+        # Context note if ROE is unusually high (buyback-driven low equity)
+        if isinstance(roe, (int, float)) and roe > 0.50:
+            st.caption(
+                "Note: ROE above 50% often reflects a small equity base "
+                "(commonly from share buybacks) rather than profitability alone - "
+                "read it alongside net margin and ROA."
+            )
 
         st.divider()
 
@@ -334,6 +343,17 @@ if "profile" in st.session_state:
                 "Higher margins/ROE = more profitable. "
                 "Debt-to-Equity: higher = more leverage/risk."
             )
+
+# Context note for unusually high ROE (buyback-driven low equity)
+            latest_roe = ratios[0].get("ROE") if ratios else None
+            if isinstance(latest_roe, (int, float)) and latest_roe > 0.50:
+                st.info(
+                    "Note on ROE: An unusually high ROE (over 50%) often reflects "
+                    "a very small equity base - frequently caused by large share "
+                    "buybacks that reduce shareholder equity - rather than "
+                    "extraordinary profitability alone. It should be read alongside "
+                    "net margin and ROA, not in isolation."
+                )
 
     with tab5:
         st.markdown("**FCFF - Free Cash Flow to the Firm** (last 5 years, USD)")
