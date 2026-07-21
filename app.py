@@ -170,10 +170,16 @@ if "profile" in st.session_state:
             if raw_key in df.columns:
                 table[friendly_name] = df[raw_key].tolist()
         display_df = pd.DataFrame(table, index=years).T
-        st.dataframe(
-            display_df.style.format("{:,.0f}", na_rep="-"),
-            use_container_width=True,
-        )
+
+        def _fmt_row(row):
+            # EPS shown with 2 decimals; everything else as whole numbers with commas
+            if "EPS" in str(row.name):
+                return [f"{v:,.2f}" if isinstance(v, (int, float)) else "-" for v in row]
+            return [f"{v:,.0f}" if isinstance(v, (int, float)) else "-" for v in row]
+
+        formatted = display_df.apply(_fmt_row, axis=1, result_type="expand")
+        formatted.columns = display_df.columns
+        st.dataframe(formatted, use_container_width=True)
 
     def build_trend_df(data, field, label):
         if not data:
