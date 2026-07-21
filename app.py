@@ -32,6 +32,41 @@ st.set_page_config(
     layout="wide",
 )
 
+# ---------- Password gate ----------
+def _get_password():
+    try:
+        if "APP_PASSWORD" in st.secrets:
+            return st.secrets["APP_PASSWORD"]
+    except Exception:
+        pass
+    import os
+    return os.getenv("APP_PASSWORD")
+
+
+def check_password():
+    """Returns True if the user has entered the correct password."""
+    correct = _get_password()
+    if not correct:
+        return True  # no password set = open access (safety fallback)
+
+    if st.session_state.get("password_ok"):
+        return True
+
+    st.title("FinSight AI")
+    st.caption("AI Investment Committee Assistant")
+    pw = st.text_input("Enter access password", type="password")
+    if st.button("Enter"):
+        if pw == correct:
+            st.session_state["password_ok"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password.")
+    st.stop()
+
+
+check_password()
+# ---------- End password gate ----------
+
 st.title("FinSight AI")
 st.caption("AI Investment Committee Assistant - DCF Valuation, Ratio Analysis, Grounded AI Insight")
 st.divider()
