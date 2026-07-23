@@ -150,7 +150,7 @@ if "profile" in st.session_state:
             if kind == "header":
                 display_rows.append(["" for _ in data])
             else:
-                display_rows.append([format(item.get(field), ",.0f") if isinstance(item.get(field) if field else None, (int, float)) else "-" for item in data])
+                display_rows.append([format(item.get(field), ",.2f" if field in ("eps", "epsDiluted") else ",.0f") if isinstance(item.get(field) if field else None, (int, float)) else "-" for item in data])
         df = pd.DataFrame(display_rows, index=index_labels, columns=years)
         st.dataframe(df, use_container_width=True, height=(len(index_labels) + 1) * 35 + 3)
 
