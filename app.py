@@ -116,9 +116,10 @@ if "profile" in st.session_state:
                 st.session_state["dcf"] = dd
 
     tabs = st.tabs(["Dashboard", "Income Statement", "Balance Sheet",
-                    "Cash Flow", "Ratios", "Valuation", "AI Analysis",
-                    "Recommendation", "Forecasting", "Capital Budgeting"])
-    (tab_dash, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9) = tabs
+                    "Cash Flow", "Ratios", "Valuation",
+                    "Forecasting", "Capital Budgeting",
+                    "AI Analysis", "Recommendation"])
+    (tab_dash, tab1, tab2, tab3, tab4, tab5, tab8, tab9, tab6, tab7) = tabs
 
     def _year_labels(data):
         labels = []
