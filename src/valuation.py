@@ -106,9 +106,10 @@ def calculate_wacc(profile, income, balance,
         return None
 
     # Equity value = market cap
-    E = profile.get("marketCap")
+    E = profile.get("marketCap") or profile.get("mktCap")
     beta = profile.get("beta")
-
+    beta_reported = beta is not None
+    
     # Debt value = total debt (latest year)
     bal = balance[0] if balance else {}
     D = safe_get(bal, "totalDebt")
@@ -152,6 +153,7 @@ def calculate_wacc(profile, income, balance,
         "Weight Equity (E/V)": weight_equity,
         "Weight Debt (D/V)": weight_debt,
         "Beta": beta if beta is not None else 1.0,
+        "Beta Note": "reported" if beta_reported else "assumed 1.00",
         "Tax Rate": tax_rate,
         "Market Cap (E)": E,
         "Total Debt (D)": D,
@@ -357,9 +359,17 @@ def is_financial_sector(profile):
         return False
     sector = (profile.get("sector") or "").lower()
     industry = (profile.get("industry") or "").lower()
-    flags = ["financial", "bank", "insurance", "capital markets",
-             "asset management"]
-    return any(f in sector or f in industry for f in flags)
+    # Industry-level test: blocks banks, insurers, capital markets and asset
+    # managers, where FCFF is meaningless. Credit Services (V, MA, AXP, PYPL)
+    # are payment networks with ordinary operating cash flow, so they pass.
+    blocked = ["bank", "insurance", "capital markets", "asset management",
+               "credit union", "mortgage", "savings"]
+    if any(b in industry for b in blocked):
+        return True
+    # Fall back to sector only when industry is missing entirely
+    if not industry and "financial" in sector:
+        return True
+    return False
 
 if __name__ == "__main__":
     from data_fetch import get_income_statement, get_cash_flow
