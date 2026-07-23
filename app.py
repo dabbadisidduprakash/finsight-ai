@@ -225,7 +225,7 @@ if "profile" in st.session_state:
 
     # ===== INCOME STATEMENT =====
     with tab1:
-        st.markdown("**Income Statement** (last 5 years, USD)")
+        st.markdown("**Income Statement** (last " + str(len(income)) + " years, USD)")
         show_structured(income, [
             ("header", "REVENUE", None),
             ("line", "Revenue", "revenue"),
@@ -256,7 +256,7 @@ if "profile" in st.session_state:
 
     # ===== BALANCE SHEET =====
     with tab2:
-        st.markdown("**Balance Sheet** (last 5 years, USD)")
+        st.markdown("**Balance Sheet** (last " + str(len(balance)) + " years, USD)")
         show_structured(balance, [
             ("header", "CURRENT ASSETS", None),
             ("line", "Cash & Cash Equivalents", "cashAndCashEquivalents"),
@@ -298,7 +298,7 @@ if "profile" in st.session_state:
 
     # ===== CASH FLOW =====
     with tab3:
-        st.markdown("**Cash Flow Statement** (last 5 years, USD)")
+        st.markdown("**Cash Flow Statement** (last " + str(len(cashflow)) + " years, USD)")
         show_structured(cashflow, [
             ("header", "OPERATING ACTIVITIES", None),
             ("line", "Net Income", "netIncome"),
@@ -334,7 +334,7 @@ if "profile" in st.session_state:
 
     # ===== RATIOS =====
     with tab4:
-        st.markdown("**Financial Ratios** (last 5 years)")
+        st.markdown("**Financial Ratios** (last " + str(len(ratios)) + " years)")
         if not ratios:
             st.warning("Could not calculate ratios.")
         else:
@@ -358,7 +358,7 @@ if "profile" in st.session_state:
 
     # ===== VALUATION =====
     with tab5:
-        st.markdown("**FCFF - Free Cash Flow to the Firm** (last 5 years, USD)")
+        st.markdown("**FCFF - Free Cash Flow to the Firm** (last " + str(len(income)) + " years, USD)")
         st.caption("FCFF = Operating Cash Flow + Interest x (1 - Tax) - CapEx")
         fr = calculate_fcff(income, cashflow)
         if fr:
