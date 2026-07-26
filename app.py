@@ -407,94 +407,98 @@ if "profile" in st.session_state:
 
     # ===== VALUATION =====
     with tab5:
-        st.markdown("**FCFF - Free Cash Flow to the Firm** (last " + str(len(income)) + " years, USD)")
-        st.caption("FCFF = Operating Cash Flow + Interest x (1 - Tax) - CapEx")
-        fr = calculate_fcff(income, cashflow)
-        if fr:
-            dr = ["Operating Cash Flow", "Interest (after-tax)", "CapEx", "FCFF"]
-            yrs = [r["Year"] for r in fr]
-            tb = {name: [format(r[name], ",.0f") if r.get(name) is not None else "-" for r in fr] for name in dr}
-            st.dataframe(pd.DataFrame(tb, index=yrs).T, use_container_width=True)
-        st.divider()
-        st.markdown("**WACC - Weighted Average Cost of Capital**")
-        vca, vcb = st.columns(2)
-        with vca:
-            rf = st.slider("Risk-Free Rate (10Y Treasury) %", 0.0, 8.0, 4.3, 0.1, key="val_rf") / 100
-        with vcb:
-            erp = st.slider("Equity Risk Premium %", 3.0, 8.0, 5.0, 0.1, key="val_erp") / 100
-        wd = calculate_wacc(profile, income, balance, risk_free_rate=rf, equity_risk_premium=erp)
-        if wd:
-            m1, m2, m3 = st.columns(3)
-            m1.metric("WACC", format(wd["WACC"]*100, ".2f") + "%")
-            m2.metric("Cost of Equity", format(wd["Cost of Equity (Re)"]*100, ".2f") + "%")
-            m3.metric("Cost of Debt", format(wd["Cost of Debt (Rd)"]*100, ".2f") + "%")
-            cw = wd["WACC"]
+        if is_financial:
+            st.markdown("### Valuation (DCF)")
+            st.warning("DCF not applicable - this is a financial-sector company (bank/insurer). Free cash flow to the firm has no meaningful interpretation for banks, so a DCF here would be misleading. Analysts value financials with P/E, Price-to-Book, or dividend-discount models instead. See the Ratios and statement tabs.")
         else:
-            st.warning("Could not calculate WACC.")
-            cw = None
-        st.divider()
-        st.markdown("### DCF Intrinsic Value")
-        vcg, vct = st.columns(2)
-        with vcg:
-            growth = st.slider("FCFF Growth Rate (next 5 yrs) %", 0.0, 20.0, 8.0, 0.5, key="val_growth") / 100
-        with vct:
-            tg = st.slider("Terminal Growth Rate %", 0.0, 5.0, 2.5, 0.1, key="val_tg") / 100
-        if cw is None:
-            st.warning("Need WACC to run the DCF.")
-        else:
-            dcf = run_dcf(income, cashflow, balance, profile, cw, growth_rate=growth, terminal_growth=tg)
-            if not dcf or dcf.get("intrinsic_per_share") is None:
-                st.warning("Could not complete DCF. Try lowering terminal growth.")
+            st.markdown("**FCFF - Free Cash Flow to the Firm** (last " + str(len(income)) + " years, USD)")
+            st.caption("FCFF = Operating Cash Flow + Interest x (1 - Tax) - CapEx")
+            fr = calculate_fcff(income, cashflow)
+            if fr:
+                dr = ["Operating Cash Flow", "Interest (after-tax)", "CapEx", "FCFF"]
+                yrs = [r["Year"] for r in fr]
+                tb = {name: [format(r[name], ",.0f") if r.get(name) is not None else "-" for r in fr] for name in dr}
+                st.dataframe(pd.DataFrame(tb, index=yrs).T, use_container_width=True)
+            st.divider()
+            st.markdown("**WACC - Weighted Average Cost of Capital**")
+            vca, vcb = st.columns(2)
+            with vca:
+                rf = st.slider("Risk-Free Rate (10Y Treasury) %", 0.0, 8.0, 4.3, 0.1, key="val_rf") / 100
+            with vcb:
+                erp = st.slider("Equity Risk Premium %", 3.0, 8.0, 5.0, 0.1, key="val_erp") / 100
+            wd = calculate_wacc(profile, income, balance, risk_free_rate=rf, equity_risk_premium=erp)
+            if wd:
+                m1, m2, m3 = st.columns(3)
+                m1.metric("WACC", format(wd["WACC"]*100, ".2f") + "%")
+                m2.metric("Cost of Equity", format(wd["Cost of Equity (Re)"]*100, ".2f") + "%")
+                m3.metric("Cost of Debt", format(wd["Cost of Debt (Rd)"]*100, ".2f") + "%")
+                cw = wd["WACC"]
             else:
-                iv, mp, up = dcf["intrinsic_per_share"], dcf["market_price"], dcf["upside"]
-                r1, r2, r3 = st.columns(3)
-                r1.metric("Intrinsic Value / Share", "$" + format(iv, ",.2f"))
-                r2.metric("Current Market Price", "$" + format(mp, ",.2f"))
-                r3.metric("Upside / (Downside)", format(up*100, "+.1f") + "%" if up is not None else "N/A")
-                mos = calculate_margin_of_safety(iv, mp)
-                st.markdown("**Margin of Safety**")
-                rm = st.slider("Required Margin of Safety % (your risk buffer)", 0, 50, 25, 5, key="val_mos") / 100
-                if mos is not None:
-                    md = format(mos*100, "+.1f") + "%" if mos > -1 else "None (overvalued)"
-                    x1, x2 = st.columns(2)
-                    x1.metric("Actual Margin of Safety", md)
-                    x2.metric("Required (your setting)", format(rm*100, ".0f") + "%")
-                    if mos >= rm:
-                        st.success("Meets your margin of safety (" + format(mos*100, ".0f") + "%).")
-                    elif mos > 0:
-                        st.warning("Below required buffer (" + format(mos*100, ".0f") + "% vs " + format(rm*100, ".0f") + "%).")
-                    else:
-                        st.error("No margin of safety - trades above intrinsic value.")
-                if up is not None:
-                    if up > 0.15:
-                        st.success("Potentially UNDERVALUED - about " + format(up*100, ".0f") + "% above price.")
-                    elif up < -0.15:
-                        st.error("Potentially OVERVALUED - about " + format(abs(up)*100, ".0f") + "% below price.")
-                    else:
-                        st.info("Roughly FAIRLY VALUED.")
-                st.markdown("**Valuation Breakdown**")
-                bd = {
-                    "Base FCFF (latest)": "$" + format(dcf["base_fcff"], ",.0f"),
-                    "PV of 5-yr FCFF": "$" + format(dcf["pv_fcff_total"], ",.0f"),
-                    "PV of Terminal Value": "$" + format(dcf["pv_terminal"], ",.0f"),
-                    "Enterprise Value": "$" + format(dcf["enterprise_value"], ",.0f"),
-                    "Equity Value": "$" + format(dcf["equity_value"], ",.0f"),
-                    "Shares Outstanding": format(dcf["shares"], ",.0f") if dcf["shares"] else "N/A",
-                }
-                st.dataframe(pd.DataFrame(list(bd.items()), columns=["Item", "Value"]).set_index("Item"), use_container_width=True)
-                if dcf["enterprise_value"]:
-                    st.caption(format(dcf["pv_terminal"]/dcf["enterprise_value"]*100, ".0f") + "% of enterprise value is terminal value.")
-                st.session_state["dcf"] = dcf
-                st.divider()
-                st.markdown("### Sensitivity Analysis")
-                sens = sensitivity_analysis(income, cashflow, balance, profile, cw, terminal_growth=tg)
-                if sens:
-                    wl, gl, grid = sens
-                    cl = ["g=" + format(g*100, ".0f") + "%" for g in gl]
-                    rl = ["WACC=" + format(w*100, ".1f") + "%" for w in wl]
-                    ct2 = [["$" + format(v, ",.0f") if v is not None else "-" for v in row] for row in grid]
-                    st.dataframe(pd.DataFrame(ct2, index=rl, columns=cl), use_container_width=True)
-                    st.caption("Current price: $" + format(mp, ",.2f") + ". Value rises with growth, falls with WACC.")
+                st.warning("Could not calculate WACC.")
+                cw = None
+            st.divider()
+            st.markdown("### DCF Intrinsic Value")
+            vcg, vct = st.columns(2)
+            with vcg:
+                growth = st.slider("FCFF Growth Rate (next 5 yrs) %", 0.0, 20.0, 8.0, 0.5, key="val_growth") / 100
+            with vct:
+                tg = st.slider("Terminal Growth Rate %", 0.0, 5.0, 2.5, 0.1, key="val_tg") / 100
+            if cw is None:
+                st.warning("Need WACC to run the DCF.")
+            else:
+                dcf = run_dcf(income, cashflow, balance, profile, cw, growth_rate=growth, terminal_growth=tg)
+                if not dcf or dcf.get("intrinsic_per_share") is None:
+                    st.warning("Could not complete DCF. Try lowering terminal growth.")
+                else:
+                    iv, mp, up = dcf["intrinsic_per_share"], dcf["market_price"], dcf["upside"]
+                    r1, r2, r3 = st.columns(3)
+                    r1.metric("Intrinsic Value / Share", "$" + format(iv, ",.2f"))
+                    r2.metric("Current Market Price", "$" + format(mp, ",.2f"))
+                    r3.metric("Upside / (Downside)", format(up*100, "+.1f") + "%" if up is not None else "N/A")
+                    mos = calculate_margin_of_safety(iv, mp)
+                    st.markdown("**Margin of Safety**")
+                    rm = st.slider("Required Margin of Safety % (your risk buffer)", 0, 50, 25, 5, key="val_mos") / 100
+                    if mos is not None:
+                        md = format(mos*100, "+.1f") + "%" if mos > -1 else "None (overvalued)"
+                        x1, x2 = st.columns(2)
+                        x1.metric("Actual Margin of Safety", md)
+                        x2.metric("Required (your setting)", format(rm*100, ".0f") + "%")
+                        if mos >= rm:
+                            st.success("Meets your margin of safety (" + format(mos*100, ".0f") + "%).")
+                        elif mos > 0:
+                            st.warning("Below required buffer (" + format(mos*100, ".0f") + "% vs " + format(rm*100, ".0f") + "%).")
+                        else:
+                            st.error("No margin of safety - trades above intrinsic value.")
+                    if up is not None:
+                        if up > 0.15:
+                            st.success("Potentially UNDERVALUED - about " + format(up*100, ".0f") + "% above price.")
+                        elif up < -0.15:
+                            st.error("Potentially OVERVALUED - about " + format(abs(up)*100, ".0f") + "% below price.")
+                        else:
+                            st.info("Roughly FAIRLY VALUED.")
+                    st.markdown("**Valuation Breakdown**")
+                    bd = {
+                        "Base FCFF (latest)": "$" + format(dcf["base_fcff"], ",.0f"),
+                        "PV of 5-yr FCFF": "$" + format(dcf["pv_fcff_total"], ",.0f"),
+                        "PV of Terminal Value": "$" + format(dcf["pv_terminal"], ",.0f"),
+                        "Enterprise Value": "$" + format(dcf["enterprise_value"], ",.0f"),
+                        "Equity Value": "$" + format(dcf["equity_value"], ",.0f"),
+                        "Shares Outstanding": format(dcf["shares"], ",.0f") if dcf["shares"] else "N/A",
+                    }
+                    st.dataframe(pd.DataFrame(list(bd.items()), columns=["Item", "Value"]).set_index("Item"), use_container_width=True)
+                    if dcf["enterprise_value"]:
+                        st.caption(format(dcf["pv_terminal"]/dcf["enterprise_value"]*100, ".0f") + "% of enterprise value is terminal value.")
+                    st.session_state["dcf"] = dcf
+                    st.divider()
+                    st.markdown("### Sensitivity Analysis")
+                    sens = sensitivity_analysis(income, cashflow, balance, profile, cw, terminal_growth=tg)
+                    if sens:
+                        wl, gl, grid = sens
+                        cl = ["g=" + format(g*100, ".0f") + "%" for g in gl]
+                        rl = ["WACC=" + format(w*100, ".1f") + "%" for w in wl]
+                        ct2 = [["$" + format(v, ",.0f") if v is not None else "-" for v in row] for row in grid]
+                        st.dataframe(pd.DataFrame(ct2, index=rl, columns=cl), use_container_width=True)
+                        st.caption("Current price: $" + format(mp, ",.2f") + ". Value rises with growth, falls with WACC.")
 
     # ===== AI ANALYSIS =====
     with tab6:
