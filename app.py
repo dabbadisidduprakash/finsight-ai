@@ -18,6 +18,7 @@ from src.ai_analysis import (
 from src.recommendation import get_recommendation
 from src.forecasting import derive_assumptions, build_projection
 from src.capbudget import build_capital_budget, excel_defaults, derive_capbudget_defaults
+from src.search import search_us_companies
 
 st.set_page_config(page_title="FinSight AI", page_icon="chart_with_upwards_trend", layout="wide")
 
@@ -58,31 +59,79 @@ st.divider()
 
 c_input, c_btn = st.columns([4, 1])
 with c_input:
-    ticker = st.text_input(
-        "US stock ticker", value="AAPL", label_visibility="collapsed",
-        placeholder="Enter a US stock ticker (e.g. AAPL, MSFT, GOOGL)",
-    ).replace(" ", "").upper()
+    query = st.text_input(
+        "Company name or US ticker", value="AAPL", label_visibility="collapsed",
+        placeholder="Enter a company name or US ticker (e.g. Apple, Microsoft, AAPL)",
+    ).strip()
 with c_btn:
     analyze = st.button("Analyze", use_container_width=True)
 
-if analyze:
-    if not ticker:
-        st.warning("Please enter a ticker symbol.")
+
+def _load_ticker(sym):
+    with st.spinner("Fetching data for " + sym + "..."):
+        profile = get_company_profile(sym)
+        income = get_income_statement(sym)
+        balance = get_balance_sheet(sym)
+        cashflow = get_cash_flow(sym)
+    if profile is None:
+        st.error("Could not load data for '" + sym + "'. It may be delisted or temporarily unavailable.")
+        return
+    st.session_state["profile"] = profile
+    st.session_state["income"] = income
+    st.session_state["balance"] = balance
+    st.session_state["cashflow"] = cashflow
+    for k in ["ai_result", "memo_result", "exec_summary", "dcf", "candidates"]:
+        st.session_state.pop(k, None)
+
+
+def _render_company_picker(cands):
+    labels = [c["name"] + "  (" + c["symbol"] + ")  -  " + (c["exchange"] or "US") for c in cands]
+
+    def _pick(box):
+        box.write("Multiple companies match your search - choose one:")
+        choice = box.radio("Matches", labels, key="pick_radio", label_visibility="collapsed")
+        if box.button("Load selected", key="pick_load", use_container_width=True):
+            st.session_state["chosen_ticker"] = cands[labels.index(choice)]["symbol"]
+            st.session_state.pop("candidates", None)
+            st.rerun()
+
+    if hasattr(st, "dialog"):
+        @st.dialog("Select a company")
+        def _dlg():
+            _pick(st)
+        _dlg()
     else:
-        with st.spinner("Fetching data for " + ticker + "..."):
-            profile = get_company_profile(ticker)
-            income = get_income_statement(ticker)
-            balance = get_balance_sheet(ticker)
-            cashflow = get_cash_flow(ticker)
-        if profile is None:
-            st.error("Could not find data for '" + ticker + "'. Check the ticker (US-listed only), or the API key may have hit its daily limit.")
+        with st.container(border=True):
+            _pick(st)
+
+
+if analyze:
+    if not query:
+        st.warning("Please enter a company name or ticker.")
+    else:
+        with st.spinner("Searching for '" + query + "'..."):
+            cands = search_us_companies(query)
+        exact = [c for c in cands if c["symbol"] == query.upper()]
+        if exact:
+            st.session_state["chosen_ticker"] = exact[0]["symbol"]
+            st.session_state.pop("candidates", None)
+        elif len(cands) == 1:
+            st.session_state["chosen_ticker"] = cands[0]["symbol"]
+            st.session_state.pop("candidates", None)
+        elif len(cands) > 1:
+            st.session_state["candidates"] = cands
+            st.session_state.pop("chosen_ticker", None)
         else:
-            st.session_state["profile"] = profile
-            st.session_state["income"] = income
-            st.session_state["balance"] = balance
-            st.session_state["cashflow"] = cashflow
-            for k in ["ai_result", "memo_result", "exec_summary", "dcf"]:
-                st.session_state.pop(k, None)
+            st.error("No US-listed company found for '" + query + "'. Try the ticker (e.g. AAPL) or a different name.")
+            st.session_state.pop("candidates", None)
+
+# If several companies matched, show the picker (a modal popup where supported).
+if st.session_state.get("candidates"):
+    _render_company_picker(st.session_state["candidates"])
+
+# Once a ticker is chosen (typed directly or picked from the popup), load it.
+if st.session_state.get("chosen_ticker"):
+    _load_ticker(st.session_state.pop("chosen_ticker"))
 
 if "profile" in st.session_state:
     profile = st.session_state["profile"]
@@ -708,4 +757,4 @@ if "profile" in st.session_state:
         st.dataframe(pd.DataFrame(depfmt, index=dy).T, use_container_width=True)
 
 st.divider()
-st.caption("FinSight AI - Built with Streamlit, Financial Modeling Prep and Google Gemini. For educational and demonstration purposes only - not investment advice.")
+st.caption("FinSight AI - Built with Streamlit, Yahoo Finance and Google Gemini. For educational and demonstration purposes only - not investment advice.")
