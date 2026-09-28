@@ -138,7 +138,11 @@ if "profile" in st.session_state:
     income = st.session_state.get("income")
     balance = st.session_state.get("balance")
     cashflow = st.session_state.get("cashflow")
-
+    
+    if not income and not balance and not cashflow:
+        st.warning("Financial statements are not available for this company on the free data tier. Try a major US stock like AAPL, MSFT, or GOOGL.")
+        st.stop()
+        
     col_logo, col_info = st.columns([1, 6])
     with col_logo:
         if profile.get("image"):
