@@ -9,6 +9,12 @@ so ratios.py, valuation.py and app.py need no changes.
 
 import yfinance as yf
 import pandas as pd
+import requests as _requests
+
+_session = _requests.Session()
+_session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+})
 
 
 # ---- Row-name aliases -------------------------------------------------
@@ -157,8 +163,7 @@ def _to_records(df, field_map, limit=5):
 
 
 def _ticker(symbol):
-    return yf.Ticker(str(symbol).strip().upper())
-
+    return yf.Ticker(str(symbol).strip().upper(), session=_session)
 
 def get_company_profile(ticker):
     """Return an FMP-shaped profile dict, or None."""
