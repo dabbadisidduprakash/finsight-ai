@@ -6,7 +6,12 @@ a direct curl_cffi call is the fallback.
 
 Returns a list of dicts: {"symbol", "name", "exchange"} - newest/best match first.
 """
+import requests as _requests
 
+_session = _requests.Session()
+_session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+})
 # Yahoo exchange codes that correspond to US listings.
 US_EXCHANGES = {
     "NMS", "NGM", "NCM",   # Nasdaq  (Global Select / Global Market / Capital Market)
@@ -35,7 +40,7 @@ def _raw_quotes(query, want):
     try:
         import yfinance as yf
         if hasattr(yf, "Search"):
-            qs = yf.Search(query, max_results=want).quotes
+            qs = yf.Search(query, max_results=want, session=_session).quotes
             if qs:
                 return qs
     except Exception:
