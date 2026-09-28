@@ -54,7 +54,7 @@ def check_password():
 check_password()
 
 st.title("FinSight AI")
-st.caption("AI Investment Committee Assistant - DCF Valuation, Ratio Analysis, Grounded AI Insight")
+st.caption("AI Investment Committee Assistant - DCF Valuation, Ratio Analysis, Grounded AI Insight  •  US-listed stocks only (NYSE, NASDAQ, AMEX)")
 st.divider()
 
 c_input, c_btn = st.columns([4, 1])
@@ -122,7 +122,7 @@ if analyze:
             st.session_state["candidates"] = cands
             st.session_state.pop("chosen_ticker", None)
         else:
-            st.error("No US-listed company found for '" + query + "'. Try the ticker (e.g. AAPL) or a different name.")
+            st.error("No US-listed company found for '" + query + "'. This app supports only US-listed stocks (NYSE, NASDAQ, AMEX). If the company is listed on a foreign exchange, try its US ADR ticker instead.")
             st.session_state.pop("candidates", None)
 
 # If several companies matched, show the picker (a modal popup where supported).
