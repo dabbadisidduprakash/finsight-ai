@@ -139,7 +139,7 @@ if "profile" in st.session_state:
     balance = st.session_state.get("balance")
     cashflow = st.session_state.get("cashflow")
     
-    if not income and not balance and not cashflow:
+    if not income or not balance or not cashflow:
         st.warning("Financial statements are not available for this company on the free data tier. Try a major US stock like AAPL, MSFT, or GOOGL.")
         st.stop()
         
