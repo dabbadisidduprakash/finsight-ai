@@ -1,7 +1,6 @@
 """
-data_fetch.py - Financial Modeling Prep (FMP) backend.
+data_fetch.py - Financial Modeling Prep (FMP) Stable API backend.
 
-Drop-in replacement for the yfinance version.
 Returns the same structures:
   - profile: a dict
   - statements: a list of yearly dicts, newest first
@@ -19,27 +18,27 @@ def _api_key():
     except Exception:
         return os.environ.get("FMP_API_KEY", "")
 
-BASE = "https://financialmodelingprep.com/api/v3"
+BASE = "https://financialmodelingprep.com/stable"
 
 
-def _get(endpoint, symbol, **params):
+def _get(endpoint, **params):
     params["apikey"] = _api_key()
-    url = f"{BASE}/{endpoint}/{symbol}"
+    url = f"{BASE}/{endpoint}"
     try:
         r = requests.get(url, params=params, timeout=15)
         r.raise_for_status()
         data = r.json()
         if isinstance(data, dict) and "Error Message" in data:
-            print(f"FMP error for {symbol}: {data['Error Message']}")
+            print(f"FMP error: {data['Error Message']}")
             return None
         return data
     except Exception as e:
-        print(f"ERROR fetching {endpoint} for {symbol}: {e}")
+        print(f"ERROR fetching {endpoint}: {e}")
         return None
 
 
 def get_company_profile(ticker):
-    data = _get("profile", ticker)
+    data = _get("profile", symbol=ticker)
     if not data or not isinstance(data, list) or len(data) == 0:
         return None
     info = data[0]
@@ -72,7 +71,7 @@ def get_company_profile(ticker):
 
 
 def _statement(endpoint, ticker, limit=5):
-    data = _get(endpoint, ticker, limit=limit)
+    data = _get(endpoint, symbol=ticker, limit=limit)
     if not data or not isinstance(data, list) or len(data) == 0:
         return None
     return data
