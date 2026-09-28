@@ -1,6 +1,6 @@
 """
-search.py - resolve a company NAME or a US TICKER to US-listed equity candidates,
-using Financial Modeling Prep (FMP).
+search.py - resolve a company NAME or US TICKER to US-listed equity candidates,
+using Financial Modeling Prep (FMP) Stable API.
 
 Returns a list of dicts: {"symbol", "name", "exchange"} - best match first.
 """
@@ -9,7 +9,7 @@ import os
 import requests
 import streamlit as st
 
-BASE = "https://financialmodelingprep.com/api/v3"
+BASE = "https://financialmodelingprep.com/stable"
 
 
 def _api_key():
@@ -24,35 +24,53 @@ def search_us_companies(query, limit=8):
     if not query:
         return []
 
+    results = []
+
+    # Try symbol search first
     try:
         r = requests.get(
-            f"{BASE}/search",
+            f"{BASE}/search-symbol",
             params={
                 "query": query,
-                "limit": limit * 3,
-                "exchange": "NASDAQ,NYSE,AMEX",
                 "apikey": _api_key(),
             },
             timeout=10,
         )
         r.raise_for_status()
         data = r.json()
+        if isinstance(data, list):
+            results.extend(data)
     except Exception as e:
-        print(f"FMP search error: {e}")
-        return []
+        print(f"FMP symbol search error: {e}")
 
-    if not isinstance(data, list):
-        return []
+    # Also try name search
+    try:
+        r = requests.get(
+            f"{BASE}/search-name",
+            params={
+                "query": query,
+                "apikey": _api_key(),
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json()
+        if isinstance(data, list):
+            results.extend(data)
+    except Exception as e:
+        print(f"FMP name search error: {e}")
 
     rows, seen = [], set()
-    for item in data:
+    for item in results:
         sym = (item.get("symbol") or "").upper()
         if not sym or sym in seen:
             continue
         if "." in sym:
             continue
+        exch = (item.get("exchangeShortName") or item.get("exchange") or "").upper()
+        if exch not in ("NASDAQ", "NYSE", "AMEX", ""):
+            continue
         name = item.get("name") or sym
-        exch = item.get("exchangeShortName") or item.get("exchange") or ""
         seen.add(sym)
         rows.append({"symbol": sym, "name": name, "exchange": exch})
         if len(rows) >= limit:
