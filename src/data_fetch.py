@@ -44,7 +44,7 @@ def get_company_profile(ticker):
     info = data[0]
     if not info.get("symbol"):
         return None
-    mcap = info.get("mktCap")
+        mcap = info.get("marketCap") or info.get("mktCap")
     price = info.get("price")
     raw_beta = info.get("beta")
     return {
